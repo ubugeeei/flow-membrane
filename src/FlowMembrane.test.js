@@ -2,6 +2,7 @@
 
 const {
   app,
+  badRequest,
   codecs,
   dispatch,
   forbidden,
@@ -14,6 +15,7 @@ const {
   notFound,
   redirect,
   route,
+  isBadRequest,
   isRedirect,
   isNotFound,
   isForbidden,
@@ -368,6 +370,112 @@ test("dispatch aborts after middleware when signal fires mid-flight", async () =
   }
   expect(isAbortError(caught)).toBe(true);
   expect(guardEntered).toBe(false);
+});
+
+test("query codecs decode primitives into context.query", async () => {
+  const myApp = app({
+    routes: [
+      route("/search", {
+        id: "search",
+        query: {
+          page: codecs.query.int({ default: 1 }),
+          sort: codecs.query.string({ default: "name" }),
+          archived: codecs.query.bool({ default: false }),
+        },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/search?page=42&archived=true");
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(result.render.context.query.page).toBe(42);
+    expect(result.render.context.query.sort).toBe("name");
+    expect(result.render.context.query.archived).toBe(true);
+  }
+});
+
+test("query codec failure yields badRequest", async () => {
+  const myApp = app({
+    routes: [
+      route("/search", {
+        id: "search",
+        query: { page: codecs.query.int() },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/search?page=NaN");
+  expect(result.kind).toBe("badRequest");
+});
+
+test("query array codec aggregates repeated keys", async () => {
+  const myApp = app({
+    routes: [
+      route("/filter", {
+        id: "filter",
+        query: { tag: codecs.query.array(codecs.query.string()) },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/filter?tag=a&tag=b&tag=c");
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(result.render.context.query.tag).toEqual(["a", "b", "c"]);
+  }
+});
+
+test("query enum codec rejects out-of-range values", async () => {
+  const myApp = app({
+    routes: [
+      route("/list", {
+        id: "list",
+        query: { order: codecs.query.enum(["asc", "desc"]) },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const ok = await dispatch(myApp, "/list?order=asc");
+  expect(ok.kind).toBe("render");
+  const bad = await dispatch(myApp, "/list?order=sideways");
+  expect(bad.kind).toBe("badRequest");
+});
+
+test("badRequest signal propagates from guard", async () => {
+  const myApp = app({
+    routes: [
+      route("/x", {
+        id: "x",
+        guard: () => {
+          badRequest("bad input");
+        },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/x");
+  expect(result.kind).toBe("badRequest");
+  expect(isBadRequest(result.signal)).toBe(true);
+});
+
+test("group-level query codec applies to child route", async () => {
+  const myApp = app({
+    routes: [
+      group("/admin", {
+        id: "admin",
+        query: { tab: codecs.query.string({ default: "overview" }) },
+        routes: [
+          route("/users", { id: "admin.users", module: homeModule() }),
+        ],
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/admin/users");
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(result.render.context.query.tab).toBe("overview");
+  }
 });
 
 test("dispatch reads signal from request.signal when no options.signal", async () => {

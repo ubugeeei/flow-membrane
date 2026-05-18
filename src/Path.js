@@ -7,6 +7,8 @@ import type {
   CompiledSegment,
   ParamCodec,
   ParamCodecs,
+  QueryCodec,
+  QueryCodecs,
 } from "./Types";
 
 const stringCodec: ParamCodec<string> = {
@@ -38,11 +40,162 @@ const uuidCodec: ParamCodec<string> = {
   serialize: (value: string): string => value,
 };
 
+type QueryStringOptions = {
+  +default?: string,
+  +required?: boolean,
+};
+
+type QueryIntOptions = {
+  +default?: number,
+  +required?: boolean,
+};
+
+type QueryBoolOptions = {
+  +default?: boolean,
+};
+
+function firstOrNull(raw: ?(string | $ReadOnlyArray<string>)): ?string {
+  if (raw == null) {
+    return null;
+  }
+  if (Array.isArray(raw)) {
+    return raw.length === 0 ? null : raw[0];
+  }
+  return raw;
+}
+
+function queryString(options?: QueryStringOptions): QueryCodec<?string> {
+  return {
+    name: "query.string",
+    parse: (raw: ?(string | $ReadOnlyArray<string>)): ?string => {
+      const value = firstOrNull(raw);
+      if (value == null) {
+        if (options?.required === true) {
+          throw new Error("Required query parameter is missing.");
+        }
+        return options?.default != null ? options.default : null;
+      }
+      return value;
+    },
+    serialize: (value: ?string): ?(string | $ReadOnlyArray<string>) => {
+      return value == null ? null : value;
+    },
+  };
+}
+
+function queryInt(options?: QueryIntOptions): QueryCodec<?number> {
+  return {
+    name: "query.int",
+    parse: (raw: ?(string | $ReadOnlyArray<string>)): ?number => {
+      const value = firstOrNull(raw);
+      if (value == null) {
+        if (options?.required === true) {
+          throw new Error("Required query parameter is missing.");
+        }
+        return options?.default != null ? options.default : null;
+      }
+      const n = Number(value);
+      if (!Number.isFinite(n) || !Number.isInteger(n)) {
+        throw new Error(`Invalid integer query parameter: ${value}`);
+      }
+      return n;
+    },
+    serialize: (value: ?number): ?(string | $ReadOnlyArray<string>) => {
+      return value == null ? null : String(value);
+    },
+  };
+}
+
+function queryBool(options?: QueryBoolOptions): QueryCodec<boolean> {
+  const fallback = options?.default === true;
+  return {
+    name: "query.bool",
+    parse: (raw: ?(string | $ReadOnlyArray<string>)): boolean => {
+      const value = firstOrNull(raw);
+      if (value == null) {
+        return fallback;
+      }
+      if (value === "" || value === "1" || value === "true" || value === "on" || value === "yes") {
+        return true;
+      }
+      if (value === "0" || value === "false" || value === "off" || value === "no") {
+        return false;
+      }
+      throw new Error(`Invalid boolean query parameter: ${value}`);
+    },
+    serialize: (value: boolean): ?(string | $ReadOnlyArray<string>) => {
+      return value ? "1" : "0";
+    },
+  };
+}
+
+function queryArray<T>(item: QueryCodec<T>): QueryCodec<$ReadOnlyArray<T>> {
+  return {
+    name: `query.array<${item.name}>`,
+    parse: (raw: ?(string | $ReadOnlyArray<string>)): $ReadOnlyArray<T> => {
+      if (raw == null) {
+        return [];
+      }
+      const values = Array.isArray(raw) ? raw : [raw];
+      const out: Array<T> = [];
+      for (const value of values) {
+        out.push(item.parse(value));
+      }
+      return out;
+    },
+    serialize: (values: $ReadOnlyArray<T>): ?(string | $ReadOnlyArray<string>) => {
+      const out: Array<string> = [];
+      for (const value of values) {
+        const serialized = item.serialize(value);
+        if (serialized == null) {
+          continue;
+        }
+        if (Array.isArray(serialized)) {
+          for (const entry of serialized) {
+            out.push(entry);
+          }
+        } else {
+          out.push(serialized);
+        }
+      }
+      return out;
+    },
+  };
+}
+
+function queryEnum<T: string>(allowed: $ReadOnlyArray<T>, options?: { +default?: T }): QueryCodec<?T> {
+  return {
+    name: `query.enum<${allowed.join("|")}>`,
+    parse: (raw: ?(string | $ReadOnlyArray<string>)): ?T => {
+      const value = firstOrNull(raw);
+      if (value == null) {
+        return options?.default ?? null;
+      }
+      if (!allowed.includes(value as $FlowFixMe as T)) {
+        throw new Error(`Invalid enum value: ${value}`);
+      }
+      return value as $FlowFixMe as T;
+    },
+    serialize: (value: ?T): ?(string | $ReadOnlyArray<string>) => {
+      return value == null ? null : value;
+    },
+  };
+}
+
+const queryCodecs = {
+  string: queryString,
+  int: queryInt,
+  bool: queryBool,
+  array: queryArray,
+  enum: queryEnum,
+};
+
 export const codecs = {
   string: (): ParamCodec<string> => stringCodec,
   int: (): ParamCodec<number> => intCodec,
   uuid: (): ParamCodec<string> => uuidCodec,
   id: <T>(): ParamCodec<T> => (stringCodec as $FlowFixMe as ParamCodec<T>),
+  query: queryCodecs,
 };
 
 export function joinPath(prefix: string, segment: string): string {
@@ -227,6 +380,22 @@ export function parseQuery(url: URL): AnyQuery {
   return result as $FlowFixMe as AnyQuery;
 }
 
+export function decodeQuery(raw: AnyQuery, codecMap: ?QueryCodecs): AnyQuery {
+  if (codecMap == null) {
+    return raw;
+  }
+  const out: { [string]: mixed } = {};
+  for (const key of Object.keys(raw)) {
+    out[key] = raw[key];
+  }
+  for (const key of Object.keys(codecMap)) {
+    const codec = codecMap[key];
+    const rawValue: mixed = Object.hasOwn(raw, key) ? raw[key] : null;
+    out[key] = codec.parse(rawValue as $FlowFixMe);
+  }
+  return (out as $FlowFixMe as AnyQuery);
+}
+
 export function buildPath(
   path: CompiledPath,
   params: AnyParams,
@@ -275,19 +444,38 @@ export function buildHref(
   return `${pathname}${search}${fragment}`;
 }
 
+function coerceQueryValue(value: mixed): ?string {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
 export function serializeQuery(query: ?AnyQuery): string {
   if (query == null) {
     return "";
   }
   const params = new URLSearchParams();
   for (const key of Object.keys(query)) {
-    const value = query[key];
+    const value: mixed = query[key];
     if (Array.isArray(value)) {
       for (const entry of value) {
-        params.append(key, entry);
+        const coerced = coerceQueryValue(entry);
+        if (coerced != null) {
+          params.append(key, coerced);
+        }
       }
-    } else if (typeof value === "string") {
-      params.append(key, value);
+    } else {
+      const coerced = coerceQueryValue(value);
+      if (coerced != null) {
+        params.append(key, coerced);
+      }
     }
   }
   const serialized = params.toString();
