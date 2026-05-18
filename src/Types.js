@@ -132,6 +132,7 @@ export type RedirectSignal = {
   +to: string,
   +status: 301 | 302 | 303 | 307 | 308,
   +headers?: { +[string]: string },
+  +setCookies?: $ReadOnlyArray<string>,
 };
 
 export type NotFoundSignal = {

@@ -9,6 +9,7 @@ import {
   checkAborted,
   resolveSignal,
 } from "./Abort";
+import { parseCookieHeader } from "./Cookie";
 import { decodeQuery } from "./Path";
 import type {
   AnyParams,
@@ -150,30 +151,7 @@ function buildHeaders(request: RequestLike): { +[string]: string } {
 function buildCookies(request: RequestLike): { +[string]: string } {
   const headers = buildHeaders(request);
   const raw = headers["cookie"] ?? headers["Cookie"] ?? "";
-  if (raw === "" || typeof raw !== "string") {
-    const empty: { +[string]: string } = {};
-    return empty;
-  }
-  const out: { [string]: string } = {};
-  for (const part of raw.split(";")) {
-    const trimmed = part.trim();
-    if (trimmed === "") {
-      continue;
-    }
-    const eq = trimmed.indexOf("=");
-    if (eq < 0) {
-      out[trimmed] = "";
-    } else {
-      const key = trimmed.slice(0, eq);
-      const value = trimmed.slice(eq + 1);
-      try {
-        out[key] = decodeURIComponent(value);
-      } catch (_err) {
-        out[key] = value;
-      }
-    }
-  }
-  return out;
+  return parseCookieHeader(typeof raw === "string" ? raw : "");
 }
 
 function buildContext(
