@@ -16,6 +16,7 @@ import type {
   Middleware,
   MiddlewareFn,
   ParamCodecs,
+  QueryCodecs,
   RouteMatch,
   RouteNode,
   RouteOptions,
@@ -102,6 +103,7 @@ export function route<Params: AnyParams = AnyParams>(
     guards,
     middleware: normalizeMiddleware(options.middleware),
     paramCodecs: options.params ?? ({} as ParamCodecs),
+    queryCodecs: options.query ?? ({} as QueryCodecs),
   };
 }
 
@@ -125,6 +127,7 @@ export function group<Params: AnyParams = AnyParams>(
     guards,
     middleware: normalizeMiddleware(options.middleware),
     paramCodecs: options.params ?? ({} as ParamCodecs),
+    queryCodecs: options.query ?? ({} as QueryCodecs),
     routes: options.routes,
   };
 }

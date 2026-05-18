@@ -5,6 +5,7 @@ export type {
   AnyQuery,
   App,
   AppOptions,
+  BadRequestSignal,
   BoundaryConfig,
   CompiledPath,
   CompiledSegment,
@@ -38,6 +39,9 @@ export type {
   ParamCodecs,
   PrerenderConfig,
   PrerenderPaths,
+  QueryCodec,
+  QueryCodecs,
+  RawQuery,
   RedirectSignal,
   RequestLike,
   Revalidate,
@@ -62,7 +66,9 @@ export { codecs } from "./Path";
 export { lazy, resolved } from "./Lazy";
 export { membrane } from "./Membrane";
 export {
+  badRequest,
   forbidden,
+  isBadRequest,
   isForbidden,
   isNotFound,
   isRedirect,

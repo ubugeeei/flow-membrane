@@ -1,6 +1,7 @@
 /* @flow strict */
 
 import type {
+  BadRequestSignal,
   ForbiddenSignal,
   NotFoundSignal,
   RedirectSignal,
@@ -71,6 +72,15 @@ export function forbidden(message?: string): empty {
   throw new MembraneSignalError(signal);
 }
 
+export function badRequest(message?: string, cause?: mixed): empty {
+  const signal: BadRequestSignal = {
+    kind: "badRequest",
+    message,
+    cause,
+  };
+  throw new MembraneSignalError(signal);
+}
+
 export function makeRedirect(
   to: string,
   params?: {
@@ -92,6 +102,10 @@ export function makeNotFound(message?: string): NotFoundSignal {
 
 export function makeForbidden(message?: string): ForbiddenSignal {
   return { kind: "forbidden", message };
+}
+
+export function makeBadRequest(message?: string, cause?: mixed): BadRequestSignal {
+  return { kind: "badRequest", message, cause };
 }
 
 export function isRedirect(value: mixed): boolean {
@@ -119,6 +133,19 @@ export function isForbidden(value: mixed): boolean {
   );
 }
 
+export function isBadRequest(value: mixed): boolean {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    (value as $FlowFixMe).kind === "badRequest"
+  );
+}
+
 export function isSignal(value: mixed): boolean {
-  return isRedirect(value) || isNotFound(value) || isForbidden(value);
+  return (
+    isRedirect(value) ||
+    isNotFound(value) ||
+    isForbidden(value) ||
+    isBadRequest(value)
+  );
 }

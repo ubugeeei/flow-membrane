@@ -9,8 +9,10 @@ import {
   checkAborted,
   resolveSignal,
 } from "./Abort";
+import { decodeQuery } from "./Path";
 import type {
   AnyParams,
+  AnyQuery,
   App,
   DispatchOptions,
   DispatchResult,
@@ -18,6 +20,8 @@ import type {
   LayoutModule,
   Middleware,
   MiddlewareContext,
+  QueryCodec,
+  QueryCodecs,
   RequestLike,
   RouteContext,
   RouteMatch,
@@ -49,6 +53,43 @@ function collectRouteGuards(match: RouteMatch): Array<Guard<AnyParams>> {
     guards.push(routeGuard);
   }
   return guards;
+}
+
+function collectQueryCodecs(match: RouteMatch): QueryCodecs {
+  const merged: { [string]: QueryCodec<mixed> } = {};
+  for (const ancestor of match.ancestors) {
+    for (const key of Object.keys(ancestor.queryCodecs)) {
+      merged[key] = ancestor.queryCodecs[key];
+    }
+  }
+  for (const key of Object.keys(match.route.queryCodecs)) {
+    merged[key] = match.route.queryCodecs[key];
+  }
+  return (merged as $FlowFixMe as QueryCodecs);
+}
+
+function applyQueryCodecs(match: RouteMatch): RouteMatch | { +badRequest: string } {
+  const codecMap = collectQueryCodecs(match);
+  if (Object.keys(codecMap).length === 0) {
+    return match;
+  }
+  try {
+    const decoded: AnyQuery = decodeQuery(match.query, codecMap);
+    return {
+      route: match.route,
+      pathname: match.pathname,
+      params: match.params,
+      query: decoded,
+      ancestors: match.ancestors,
+      matchedPath: match.matchedPath,
+    };
+  } catch (err) {
+    return {
+      badRequest: err != null && typeof (err as $FlowFixMe).message === "string"
+        ? (err as $FlowFixMe).message
+        : "Invalid query parameters.",
+    };
+  }
 }
 
 function collectRouteMiddleware(match: RouteMatch): Array<Middleware> {
@@ -216,10 +257,22 @@ export async function dispatch(
   );
   checkAborted(abortSignal);
 
-  const match = appHandle.match(url);
-  if (match == null) {
+  const rawMatch = appHandle.match(url);
+  if (rawMatch == null) {
     return { kind: "notFound", signal: { kind: "notFound" } };
   }
+
+  const decoded = applyQueryCodecs(rawMatch);
+  if (decoded != null && typeof (decoded as $FlowFixMe).badRequest === "string") {
+    return {
+      kind: "badRequest",
+      signal: {
+        kind: "badRequest",
+        message: (decoded as $FlowFixMe).badRequest,
+      },
+    };
+  }
+  const match: RouteMatch = decoded as $FlowFixMe as RouteMatch;
 
   const session: SessionLike = options?.session ?? ({} as SessionLike);
   const baseState: { [string]: mixed } = options?.state != null
@@ -266,6 +319,10 @@ export async function dispatch(
         }
         if (guardSignal.kind === "forbidden") {
           outcome = { kind: "forbidden", signal: guardSignal };
+          return;
+        }
+        if (guardSignal.kind === "badRequest") {
+          outcome = { kind: "badRequest", signal: guardSignal };
           return;
         }
         outcome = { kind: "notFound", signal: guardSignal };
@@ -346,6 +403,8 @@ export async function dispatch(
           outcome = { kind: "redirect", signal: configGuardSignal };
         } else if (configGuardSignal.kind === "forbidden") {
           outcome = { kind: "forbidden", signal: configGuardSignal };
+        } else if (configGuardSignal.kind === "badRequest") {
+          outcome = { kind: "badRequest", signal: configGuardSignal };
         } else {
           outcome = { kind: "notFound", signal: configGuardSignal };
         }
@@ -380,6 +439,9 @@ export async function dispatch(
         }
         if (sig.kind === "forbidden") {
           return { kind: "forbidden", signal: sig };
+        }
+        if (sig.kind === "badRequest") {
+          return { kind: "badRequest", signal: sig };
         }
         return { kind: "notFound", signal: sig };
       }

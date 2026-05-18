@@ -8,7 +8,8 @@ import type {
 } from "flow-cell/server";
 
 export type AnyParams = { +[string]: mixed };
-export type AnyQuery = { +[string]: string | $ReadOnlyArray<string> };
+export type AnyQuery = { +[string]: mixed };
+export type RawQuery = { +[string]: string | $ReadOnlyArray<string> };
 
 export type ParamCodec<T> = {
   +parse: (raw: string) => T,
@@ -17,6 +18,14 @@ export type ParamCodec<T> = {
 };
 
 export type ParamCodecs = { +[string]: ParamCodec<mixed> };
+
+export type QueryCodec<T> = {
+  +parse: (raw: ?(string | $ReadOnlyArray<string>)) => T,
+  +serialize: (value: T) => ?(string | $ReadOnlyArray<string>),
+  +name: string,
+};
+
+export type QueryCodecs = { +[string]: QueryCodec<mixed> };
 
 export type CompiledSegment =
   | { +kind: "literal", +value: string }
@@ -90,7 +99,8 @@ export type GuardResult =
   | false
   | RedirectSignal
   | NotFoundSignal
-  | ForbiddenSignal;
+  | ForbiddenSignal
+  | BadRequestSignal;
 
 export type GuardFn<Params: AnyParams = AnyParams> = (
   context: GuardContext<Params>,
@@ -119,7 +129,17 @@ export type ForbiddenSignal = {
   +message?: string,
 };
 
-export type RouteSignal = RedirectSignal | NotFoundSignal | ForbiddenSignal;
+export type BadRequestSignal = {
+  +kind: "badRequest",
+  +message?: string,
+  +cause?: mixed,
+};
+
+export type RouteSignal =
+  | RedirectSignal
+  | NotFoundSignal
+  | ForbiddenSignal
+  | BadRequestSignal;
 
 export type Revalidate = "never" | string | number;
 
@@ -185,6 +205,7 @@ export type DocumentModule = {
 export type RouteOptions<Params: AnyParams = AnyParams> = {
   +id?: string,
   +params?: ParamCodecs,
+  +query?: QueryCodecs,
   +module: Lazy<RouteModule<Params, mixed>>,
   +guard?: Guard<Params> | GuardFn<Params>,
   +middleware?: $ReadOnlyArray<Middleware | MiddlewareFn>,
@@ -193,6 +214,7 @@ export type RouteOptions<Params: AnyParams = AnyParams> = {
 export type GroupOptions<Params: AnyParams = AnyParams> = {
   +id?: string,
   +params?: ParamCodecs,
+  +query?: QueryCodecs,
   +layout?: Lazy<LayoutModule>,
   +guard?: Guard<Params> | GuardFn<Params>,
   +middleware?: $ReadOnlyArray<Middleware | MiddlewareFn>,
@@ -208,6 +230,7 @@ export type RouteNode =
       +guards: $ReadOnlyArray<Guard<AnyParams>>,
       +middleware: $ReadOnlyArray<Middleware>,
       +paramCodecs: ParamCodecs,
+      +queryCodecs: QueryCodecs,
     }
   | {
       +kind: "group",
@@ -217,6 +240,7 @@ export type RouteNode =
       +guards: $ReadOnlyArray<Guard<AnyParams>>,
       +middleware: $ReadOnlyArray<Middleware>,
       +paramCodecs: ParamCodecs,
+      +queryCodecs: QueryCodecs,
       +routes: $ReadOnlyArray<RouteNode>,
     };
 
@@ -265,7 +289,8 @@ export type DispatchResult =
   | { +kind: "render", +render: ResolvedRender }
   | { +kind: "redirect", +signal: RedirectSignal }
   | { +kind: "notFound", +signal: NotFoundSignal }
-  | { +kind: "forbidden", +signal: ForbiddenSignal };
+  | { +kind: "forbidden", +signal: ForbiddenSignal }
+  | { +kind: "badRequest", +signal: BadRequestSignal };
 
 export type NavigationTarget = string | URL | {
   +to: string,
