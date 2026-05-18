@@ -358,6 +358,10 @@ export type NavigationBeforeLeaveFn = (
   event: NavigationEvent,
 ) => boolean | string | Promise<boolean | string>;
 
+export type ScrollPosition = { +x: number, +y: number };
+
+export type ScrollBehavior = "restore" | "top" | "preserve";
+
 export interface Navigation {
   +current: Cell<URL>;
   +pending: Readable<boolean>;
@@ -366,11 +370,14 @@ export interface Navigation {
   reload(): Promise<void>;
   back(): void;
   forward(): void;
+  saveScroll(url: URL | string, position: ScrollPosition): void;
+  getScroll(url: URL | string): ?ScrollPosition;
+  notifyPop(url: URL | string): Promise<void>;
 }
 
 export type NavigateOptions = {
   +replace?: boolean,
-  +scroll?: "restore" | "top" | "preserve",
+  +scroll?: ScrollBehavior,
   +transition?: boolean,
   +data?: mixed,
 };
