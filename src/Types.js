@@ -60,6 +60,7 @@ export type MiddlewareContext = {
   cookies: { +[string]: string },
   session: SessionLike,
   state: { [string]: mixed },
+  +signal: ?AbortSignal,
 };
 
 export type MiddlewareNext = () => Promise<mixed> | mixed;
@@ -81,6 +82,7 @@ export type GuardContext<Params: AnyParams = AnyParams> = {
   +session: SessionLike,
   +state: { +[string]: mixed },
   +matched: $ReadOnlyArray<string>,
+  +signal: ?AbortSignal,
 };
 
 export type GuardResult =
@@ -161,6 +163,7 @@ export type RouteContext<Params: AnyParams = AnyParams, Genes = {}> = {
   +session: SessionLike,
   +request: RequestLike,
   +state: { +[string]: mixed },
+  +signal: ?AbortSignal,
 };
 
 export type RouteModule<Params: AnyParams = AnyParams, Genes = {}> = {
@@ -248,6 +251,7 @@ export type DispatchOptions = {
   +request?: RequestLike,
   +session?: SessionLike,
   +state?: { +[string]: mixed },
+  +signal?: AbortSignal,
 };
 
 export type ResolvedRender = {

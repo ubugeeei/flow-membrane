@@ -5,6 +5,10 @@ import {
   isSignalError,
   signalOf,
 } from "./Signals";
+import {
+  checkAborted,
+  resolveSignal,
+} from "./Abort";
 import type {
   AnyParams,
   App,
@@ -137,6 +141,7 @@ function buildContext(
   session: SessionLike,
   state: { +[string]: mixed },
   genes: mixed,
+  signal: ?AbortSignal,
 ): RouteContext<AnyParams, mixed> {
   return {
     id: match.route.id,
@@ -148,6 +153,7 @@ function buildContext(
     session,
     request,
     state,
+    signal,
   };
 }
 
@@ -158,9 +164,11 @@ async function runGuards(
   request: RequestLike,
   session: SessionLike,
   state: { +[string]: mixed },
+  signal: ?AbortSignal,
 ): Promise<?RouteSignal> {
   const matched = match.ancestors.map(ancestor => ancestor.id).concat([match.route.id]);
   for (const guardEntry of guards) {
+    checkAborted(signal);
     let result;
     try {
       result = await guardEntry.run({
@@ -170,11 +178,12 @@ async function runGuards(
         session,
         state,
         matched,
+        signal,
       });
     } catch (thrown) {
-      const signal = signalOf(thrown);
-      if (signal != null) {
-        return signal;
+      const routeSignal = signalOf(thrown);
+      if (routeSignal != null) {
+        return routeSignal;
       }
       throw thrown;
     }
@@ -199,12 +208,19 @@ export async function dispatch(
   const url = typeof input === "string"
     ? new URL(input, "http://flow-membrane.local")
     : input;
+
+  const request = ensureRequest(url, options);
+  const abortSignal: ?AbortSignal = resolveSignal(
+    options?.signal,
+    request.signal,
+  );
+  checkAborted(abortSignal);
+
   const match = appHandle.match(url);
   if (match == null) {
     return { kind: "notFound", signal: { kind: "notFound" } };
   }
 
-  const request = ensureRequest(url, options);
   const session: SessionLike = options?.session ?? ({} as SessionLike);
   const baseState: { [string]: mixed } = options?.state != null
     ? ({ ...(options.state as $FlowFixMe) } as { [string]: mixed })
@@ -217,6 +233,7 @@ export async function dispatch(
     cookies: buildCookies(request),
     session,
     state: baseState,
+    signal: abortSignal,
   };
 
   const middlewares: Array<Middleware> = [];
@@ -231,6 +248,7 @@ export async function dispatch(
 
   try {
     await runMiddlewareChain(middlewares, middlewareContext, async () => {
+      checkAborted(abortSignal);
       const guards = collectRouteGuards(match);
       const guardSignal = await runGuards(
         guards,
@@ -239,6 +257,7 @@ export async function dispatch(
         request,
         session,
         middlewareContext.state,
+        abortSignal,
       );
       if (guardSignal != null) {
         if (guardSignal.kind === "redirect") {
@@ -258,14 +277,25 @@ export async function dispatch(
         outcome = { kind: "notFound", signal: { kind: "notFound" } };
         return;
       }
+      checkAborted(abortSignal);
       const module = await routeNode.module.load();
+      checkAborted(abortSignal);
       const layouts = await loadAncestorLayouts(match.ancestors);
+      checkAborted(abortSignal);
 
       const moduleConfig = (module as $FlowFixMe).config;
       let genes: mixed = {};
       let configGuardSignal: ?RouteSignal = null;
       if (moduleConfig != null) {
-        const tempContext = buildContext(match, url, request, session, middlewareContext.state, {});
+        const tempContext = buildContext(
+          match,
+          url,
+          request,
+          session,
+          middlewareContext.state,
+          {},
+          abortSignal,
+        );
         if (typeof moduleConfig.guard === "function") {
           try {
             const result = await moduleConfig.guard({
@@ -275,6 +305,7 @@ export async function dispatch(
               session,
               state: middlewareContext.state,
               matched: match.ancestors.map(a => a.id).concat([match.route.id]),
+              signal: abortSignal,
             });
             if (result === false) {
               configGuardSignal = { kind: "forbidden" };
@@ -287,21 +318,22 @@ export async function dispatch(
               configGuardSignal = result as $FlowFixMe as RouteSignal;
             }
           } catch (thrown) {
-            const signal = signalOf(thrown);
-            if (signal != null) {
-              configGuardSignal = signal;
+            const sig = signalOf(thrown);
+            if (sig != null) {
+              configGuardSignal = sig;
             } else {
               throw thrown;
             }
           }
         }
+        checkAborted(abortSignal);
         if (configGuardSignal == null && typeof moduleConfig.genes === "function") {
           try {
             genes = moduleConfig.genes(tempContext);
           } catch (thrown) {
-            const signal = signalOf(thrown);
-            if (signal != null) {
-              configGuardSignal = signal;
+            const sig = signalOf(thrown);
+            if (sig != null) {
+              configGuardSignal = sig;
             } else {
               throw thrown;
             }
@@ -320,7 +352,15 @@ export async function dispatch(
         return;
       }
 
-      const context = buildContext(match, url, request, session, middlewareContext.state, genes);
+      const context = buildContext(
+        match,
+        url,
+        request,
+        session,
+        middlewareContext.state,
+        genes,
+        abortSignal,
+      );
       outcome = {
         kind: "render",
         render: {
@@ -333,15 +373,15 @@ export async function dispatch(
     });
   } catch (thrown) {
     if (isSignalError(thrown)) {
-      const signal = signalOf(thrown);
-      if (signal != null) {
-        if (signal.kind === "redirect") {
-          return { kind: "redirect", signal };
+      const sig = signalOf(thrown);
+      if (sig != null) {
+        if (sig.kind === "redirect") {
+          return { kind: "redirect", signal: sig };
         }
-        if (signal.kind === "forbidden") {
-          return { kind: "forbidden", signal };
+        if (sig.kind === "forbidden") {
+          return { kind: "forbidden", signal: sig };
         }
-        return { kind: "notFound", signal };
+        return { kind: "notFound", signal: sig };
       }
     }
     if (isRedirect(thrown)) {
