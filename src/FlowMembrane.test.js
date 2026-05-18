@@ -478,6 +478,165 @@ test("group-level query codec applies to child route", async () => {
   }
 });
 
+test("method whitelist returns methodNotAllowed for disallowed method", async () => {
+  const myApp = app({
+    routes: [
+      route("/api", {
+        id: "api",
+        methods: ["GET", "POST"],
+        module: homeModule(),
+      }),
+    ],
+  });
+  const ok = await dispatch(myApp, "/api", {
+    request: { url: "/api", method: "POST", headers: {} },
+  });
+  expect(ok.kind).toBe("render");
+  const bad = await dispatch(myApp, "/api", {
+    request: { url: "/api", method: "DELETE", headers: {} },
+  });
+  expect(bad.kind).toBe("methodNotAllowed");
+  if (bad.kind === "methodNotAllowed") {
+    expect(bad.signal.method).toBe("DELETE");
+    expect(bad.signal.allowed).toEqual(["GET", "POST"]);
+  }
+});
+
+test("group method whitelist intersects with route whitelist", async () => {
+  const myApp = app({
+    routes: [
+      group("/api", {
+        id: "api",
+        methods: ["GET", "POST"],
+        routes: [
+          route("/items", {
+            id: "items",
+            methods: ["POST", "DELETE"],
+            module: homeModule(),
+          }),
+        ],
+      }),
+    ],
+  });
+  const ok = await dispatch(myApp, "/api/items", {
+    request: { url: "/api/items", method: "POST", headers: {} },
+  });
+  expect(ok.kind).toBe("render");
+  const bad = await dispatch(myApp, "/api/items", {
+    request: { url: "/api/items", method: "DELETE", headers: {} },
+  });
+  expect(bad.kind).toBe("methodNotAllowed");
+});
+
+test("guard and middleware see normalized method", async () => {
+  let mwMethod = null;
+  let guardMethod = null;
+  const captureMw = middleware(async (ctx, next) => {
+    mwMethod = ctx.method;
+    return next();
+  });
+  const myApp = app({
+    middleware: [captureMw],
+    routes: [
+      route("/x", {
+        id: "x",
+        guard: ctx => {
+          guardMethod = ctx.method;
+          return true;
+        },
+        module: homeModule(),
+      }),
+    ],
+  });
+  await dispatch(myApp, "/x", {
+    request: { url: "/x", method: "post", headers: {} },
+  });
+  expect(mwMethod).toBe("POST");
+  expect(guardMethod).toBe("POST");
+});
+
+test("method-specific action runs for matching method and surfaces actionResult", async () => {
+  const calls = [];
+  const myApp = app({
+    routes: [
+      route("/contact", {
+        id: "contact",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            actions: {
+              POST: async ctx => {
+                calls.push(["POST", ctx.method]);
+                return { ok: true };
+              },
+            },
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/contact", {
+    request: { url: "/contact", method: "POST", headers: {} },
+  });
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(result.render.context.actionResult).toEqual({ ok: true });
+    expect(result.render.context.method).toBe("POST");
+  }
+  expect(calls).toEqual([["POST", "POST"]]);
+});
+
+test("action throwing redirect short-circuits to redirect result", async () => {
+  const myApp = app({
+    routes: [
+      route("/contact", {
+        id: "contact",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            actions: {
+              POST: async () => {
+                redirect("/thanks");
+              },
+            },
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/contact", {
+    request: { url: "/contact", method: "POST", headers: {} },
+  });
+  expect(result.kind).toBe("redirect");
+  if (result.kind === "redirect") {
+    expect(result.signal.to).toBe("/thanks");
+  }
+});
+
+test("generic action handler runs for any non-GET/HEAD method", async () => {
+  const calls = [];
+  const myApp = app({
+    routes: [
+      route("/x", {
+        id: "x",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            action: async ctx => {
+              calls.push(ctx.method);
+              return ctx.method;
+            },
+          }),
+        })),
+      }),
+    ],
+  });
+  await dispatch(myApp, "/x", { request: { url: "/x", method: "GET", headers: {} } });
+  await dispatch(myApp, "/x", { request: { url: "/x", method: "PUT", headers: {} } });
+  await dispatch(myApp, "/x", { request: { url: "/x", method: "DELETE", headers: {} } });
+  expect(calls).toEqual(["PUT", "DELETE"]);
+});
+
 test("dispatch reads signal from request.signal when no options.signal", async () => {
   const controller = new AbortController();
   controller.abort();

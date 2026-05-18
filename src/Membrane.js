@@ -15,5 +15,7 @@ export function membrane<Params: AnyParams = AnyParams, Genes = {}>(
     boundary: config.boundary,
     metadata: config.metadata,
     revalidate: config.revalidate,
+    action: config.action,
+    actions: config.actions,
   });
 }
