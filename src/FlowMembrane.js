@@ -55,6 +55,7 @@ export type {
   RouteModule,
   RouteNode,
   RouteOptions,
+  RouteMetadata,
   RouteSignal,
   ScrollBehavior,
   ScrollPosition,
@@ -101,11 +102,14 @@ export {
 } from "./Navigation";
 export {
   Link,
+  MetadataProvider,
   NavigationProvider,
   getDefaultNavigation,
   navigate,
   useApp,
+  useMetadata,
   useNavigation,
   useRouteMatch,
   useUrl,
 } from "./React";
+export { renderMetaTags } from "./Metadata";

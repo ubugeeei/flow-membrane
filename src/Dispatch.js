@@ -188,6 +188,27 @@ function normalizeMethod(method: ?string): HttpMethod {
   return method.toUpperCase();
 }
 
+function resolveMetadata(
+  moduleConfig: $FlowFixMe,
+  context: RouteContext<AnyParams, mixed>,
+): mixed {
+  if (moduleConfig == null) {
+    return null;
+  }
+  const raw: mixed = moduleConfig.metadata;
+  if (raw == null) {
+    return null;
+  }
+  if (typeof raw === "function") {
+    try {
+      return (raw as $FlowFixMe)(context);
+    } catch (_err) {
+      return null;
+    }
+  }
+  return raw;
+}
+
 function pickActionHandler(
   moduleConfig: $FlowFixMe,
   method: HttpMethod,
@@ -517,6 +538,7 @@ export async function dispatch(
         method,
         actionResult,
       );
+      const metadata: mixed = resolveMetadata(moduleConfig, context);
       outcome = {
         kind: "render",
         render: {
@@ -524,6 +546,7 @@ export async function dispatch(
           module: module as $FlowFixMe as RouteModule<AnyParams, mixed>,
           layouts,
           context,
+          metadata,
         },
       };
     });

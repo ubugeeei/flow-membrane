@@ -54,6 +54,7 @@ export type {
   RouteModule,
   RouteNode,
   RouteOptions,
+  RouteMetadata,
   RouteSignal,
   ScrollBehavior,
   ScrollPosition,
@@ -93,6 +94,7 @@ export {
   parseCookieHeader,
   serializeCookie,
 } from "./Cookie";
+export { renderMetaTags } from "./Metadata";
 export {
   createNavigation,
   hrefFor,

@@ -19,6 +19,7 @@ import type {
 
 const NavigationContext: React.Context<?Navigation> = React.createContext(null);
 const AppContext: React.Context<?App> = React.createContext(null);
+const MetadataContext: React.Context<mixed> = React.createContext(null);
 
 let defaultNavigation: ?Navigation = null;
 
@@ -37,6 +38,7 @@ export function getDefaultNavigation(): Navigation {
 export function NavigationProvider(props: {
   +navigation?: Navigation,
   +app?: App,
+  +metadata?: mixed,
   +children?: React.Node,
 }): React.Node {
   const navigation = props.navigation ?? getDefaultNavigation();
@@ -47,9 +49,29 @@ export function NavigationProvider(props: {
     createElement(
       AppContext.Provider,
       { value: props.app ?? null },
-      props.children,
+      createElement(
+        MetadataContext.Provider,
+        { value: props.metadata ?? null },
+        props.children,
+      ),
     ),
   );
+}
+
+export function MetadataProvider(props: {
+  +metadata: mixed,
+  +children?: React.Node,
+}): React.Node {
+  const createElement: any = React.createElement;
+  return createElement(
+    MetadataContext.Provider,
+    { value: props.metadata },
+    props.children,
+  );
+}
+
+export function useMetadata(): mixed {
+  return React.useContext(MetadataContext);
 }
 
 export function useNavigation(): Navigation {
