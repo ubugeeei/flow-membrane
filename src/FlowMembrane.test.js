@@ -17,6 +17,8 @@ const {
   isRedirect,
   isNotFound,
   isForbidden,
+  isAbortError,
+  AbortError,
   createNavigation,
   hrefFor,
   previewMatch,
@@ -289,4 +291,103 @@ test("lazy preloads modules and reads cached value", async () => {
   await mod.load();
   expect(loadCount).toBe(1);
   expect(typeof mod.read).toBe("function");
+});
+
+test("dispatch rejects with AbortError when signal pre-aborted", async () => {
+  const myApp = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  const controller = new AbortController();
+  controller.abort(new Error("user cancelled"));
+  let caught = null;
+  try {
+    await dispatch(myApp, "/", { signal: controller.signal });
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).not.toBe(null);
+  expect(isAbortError(caught)).toBe(true);
+  expect(caught instanceof AbortError).toBe(true);
+});
+
+test("dispatch surfaces signal in middleware/guard/route contexts", async () => {
+  let mwSignal = null;
+  let guardSignal = null;
+  const captureMw = middleware(async (ctx, next) => {
+    mwSignal = ctx.signal;
+    return next();
+  });
+  const myApp = app({
+    middleware: [captureMw],
+    routes: [
+      route("/x", {
+        id: "x",
+        guard: ctx => {
+          guardSignal = ctx.signal;
+          return true;
+        },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const controller = new AbortController();
+  const result = await dispatch(myApp, "/x", { signal: controller.signal });
+  expect(result.kind).toBe("render");
+  expect(mwSignal).toBe(controller.signal);
+  expect(guardSignal).toBe(controller.signal);
+  if (result.kind === "render") {
+    expect(result.render.context.signal).toBe(controller.signal);
+  }
+});
+
+test("dispatch aborts after middleware when signal fires mid-flight", async () => {
+  const controller = new AbortController();
+  let guardEntered = false;
+  const slowMw = middleware(async (ctx, next) => {
+    controller.abort(new Error("timeout"));
+    return next();
+  });
+  const myApp = app({
+    middleware: [slowMw],
+    routes: [
+      route("/x", {
+        id: "x",
+        guard: () => {
+          guardEntered = true;
+          return true;
+        },
+        module: homeModule(),
+      }),
+    ],
+  });
+  let caught = null;
+  try {
+    await dispatch(myApp, "/x", { signal: controller.signal });
+  } catch (err) {
+    caught = err;
+  }
+  expect(isAbortError(caught)).toBe(true);
+  expect(guardEntered).toBe(false);
+});
+
+test("dispatch reads signal from request.signal when no options.signal", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let caught = null;
+  const myApp = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  try {
+    await dispatch(myApp, "/", {
+      request: {
+        url: "/",
+        method: "GET",
+        headers: {},
+        signal: controller.signal,
+      },
+    });
+  } catch (err) {
+    caught = err;
+  }
+  expect(isAbortError(caught)).toBe(true);
 });

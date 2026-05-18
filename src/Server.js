@@ -73,6 +73,7 @@ export {
 } from "./Signals";
 export { matchRoute } from "./Match";
 export { dispatch } from "./Dispatch";
+export { AbortError, isAbortError } from "./Abort";
 export {
   createNavigation,
   hrefFor,
