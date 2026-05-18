@@ -50,6 +50,7 @@ export interface Lazy<T> {
   +peek: () => ?T;
   +preload: () => Promise<T>;
   +state: () => LazyState<T>;
+  +invalidate: () => void;
 }
 
 export type RequestLike = {
