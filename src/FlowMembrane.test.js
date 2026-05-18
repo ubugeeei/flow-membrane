@@ -18,12 +18,14 @@ const {
   middleware,
   notFound,
   parseCookieHeader,
+  prerenderPlan,
   redirect,
   renderBoundary,
   renderMetaTags,
   renderResolved,
   route,
   serializeCookie,
+  validatePrerenderConfig,
   isBadRequest,
   isRedirect,
   isNotFound,
@@ -1054,6 +1056,125 @@ test("renderBoundary returns null for redirect / badRequest / methodNotAllowed",
     request: { url: "/m", method: "POST", headers: {} },
   });
   expect(renderBoundary(r3)).toBe(null);
+});
+
+test("validatePrerenderConfig accepts well-formed config and rejects malformed", () => {
+  expect(validatePrerenderConfig(null).kind).toBe("ok");
+  expect(validatePrerenderConfig({}).kind).toBe("ok");
+  expect(validatePrerenderConfig({ revalidate: 60 }).kind).toBe("ok");
+  expect(validatePrerenderConfig({ revalidate: "1h" }).kind).toBe("ok");
+  expect(validatePrerenderConfig({ revalidate: "never" }).kind).toBe("ok");
+  expect(validatePrerenderConfig({ fallback: "static" }).kind).toBe("ok");
+
+  const negative = validatePrerenderConfig({ revalidate: -1 });
+  expect(negative.kind).toBe("error");
+  const unitErr = validatePrerenderConfig({ revalidate: "1week" });
+  expect(unitErr.kind).toBe("error");
+  const fb = validatePrerenderConfig({ fallback: "wrong" });
+  expect(fb.kind).toBe("error");
+});
+
+test("prerenderPlan enumerates static and parameterized routes", async () => {
+  const myApp = app({
+    routes: [
+      route("/", {
+        id: "home",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            prerender: { revalidate: "1h" },
+          }),
+        })),
+      }),
+      route("/products/:id", {
+        id: "product",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            prerender: {
+              paths: [{ id: "a" }, { id: "b" }],
+              revalidate: 3600,
+              fallback: "static",
+            },
+          }),
+        })),
+      }),
+      route("/no-config", {
+        id: "skip",
+        module: lazy(async () => ({
+          default: () => null,
+        })),
+      }),
+    ],
+  });
+  const plan = await prerenderPlan(myApp);
+  const ids = plan.map(entry => entry.routeId);
+  expect(ids.includes("home")).toBe(true);
+  expect(ids.includes("product")).toBe(true);
+  expect(ids.includes("skip")).toBe(false);
+  const productPaths = plan
+    .filter(entry => entry.routeId === "product")
+    .map(entry => entry.path)
+    .sort();
+  expect(productPaths).toEqual(["/products/a", "/products/b"]);
+  const home = plan.find(entry => entry.routeId === "home");
+  if (home != null) {
+    expect(home.revalidate).toBe("1h");
+  }
+  const product = plan.find(entry => entry.routeId === "product");
+  if (product != null) {
+    expect(product.fallback).toBe("static");
+  }
+});
+
+test("prerenderPlan throws on invalid prerender config", async () => {
+  const myApp = app({
+    routes: [
+      route("/", {
+        id: "bad",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            prerender: { revalidate: -10 },
+          }),
+        })),
+      }),
+    ],
+  });
+  let caught = null;
+  try {
+    await prerenderPlan(myApp);
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).not.toBe(null);
+  expect(String(caught != null && caught.message != null ? caught.message : "").includes("revalidate")).toBe(true);
+});
+
+test("prerenderPlan accepts function-typed paths and inherits group prefix", async () => {
+  const myApp = app({
+    routes: [
+      group("/g", {
+        id: "g",
+        routes: [
+          route("/:slug", {
+            id: "g.show",
+            module: lazy(async () => ({
+              default: () => null,
+              config: membrane({
+                prerender: {
+                  paths: async () => [{ slug: "x" }, { slug: "y" }],
+                },
+              }),
+            })),
+          }),
+        ],
+      }),
+    ],
+  });
+  const plan = await prerenderPlan(myApp);
+  const paths = plan.map(entry => entry.path).sort();
+  expect(paths).toEqual(["/g/x", "/g/y"]);
 });
 
 test("dispatch reads signal from request.signal when no options.signal", async () => {
