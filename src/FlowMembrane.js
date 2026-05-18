@@ -115,3 +115,4 @@ export {
 export { renderMetaTags } from "./Metadata";
 export { renderBoundary, renderResolved } from "./Render";
 export { prerenderPlan, validatePrerenderConfig } from "./Prerender";
+export { awaitGenes, isGenePending } from "./Genes";

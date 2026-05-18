@@ -316,6 +316,7 @@ export type DispatchOptions = {
   +session?: SessionLike,
   +state?: { +[string]: mixed },
   +signal?: AbortSignal,
+  +awaitGenes?: boolean,
 };
 
 export type RouteMetadata = {

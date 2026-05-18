@@ -5,6 +5,7 @@ const ReactDOMServer = require("react-dom/server");
 
 const {
   app,
+  awaitGenes,
   badRequest,
   codecs,
   clearCookie,
@@ -12,6 +13,7 @@ const {
   forbidden,
   group,
   guard,
+  isGenePending,
   lazy,
   matchRoute,
   membrane,
@@ -1175,6 +1177,95 @@ test("prerenderPlan accepts function-typed paths and inherits group prefix", asy
   const plan = await prerenderPlan(myApp);
   const paths = plan.map(entry => entry.path).sort();
   expect(paths).toEqual(["/g/x", "/g/y"]);
+});
+
+test("genes promises pass through dispatch unawaited by default (streaming model)", async () => {
+  const myApp = app({
+    routes: [
+      route("/p/:id", {
+        id: "product",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            genes: ctx => ({
+              product: Promise.resolve({ id: ctx.params.id, name: "Widget" }),
+            }),
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/p/42");
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(isGenePending(result.render.context.genes)).toBe(true);
+    const resolved = await result.render.context.genes.product;
+    expect(resolved.id).toBe("42");
+    expect(resolved.name).toBe("Widget");
+  }
+});
+
+test("awaitGenes resolves all promise values for SSR pipelines", async () => {
+  const genes = {
+    a: Promise.resolve(1),
+    b: 2,
+    c: Promise.resolve({ deep: "value" }),
+  };
+  const resolved = await awaitGenes(genes);
+  expect(resolved.a).toBe(1);
+  expect(resolved.b).toBe(2);
+  expect(resolved.c.deep).toBe("value");
+});
+
+test("dispatch with awaitGenes: true resolves genes before returning", async () => {
+  const myApp = app({
+    routes: [
+      route("/p/:id", {
+        id: "product",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            genes: ctx => ({
+              product: Promise.resolve({ id: ctx.params.id, name: "Widget" }),
+              tags: Promise.resolve(["a", "b"]),
+            }),
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/p/42", { awaitGenes: true });
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(isGenePending(result.render.context.genes)).toBe(false);
+    expect(result.render.context.genes.product.id).toBe("42");
+    expect(result.render.context.genes.tags).toEqual(["a", "b"]);
+  }
+});
+
+test("awaitGenes surfaces a thrown signal from a gene promise", async () => {
+  const myApp = app({
+    routes: [
+      route("/x", {
+        id: "x",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            genes: () => ({
+              boom: Promise.reject(new Error("DB down")),
+            }),
+          }),
+        })),
+      }),
+    ],
+  });
+  let caught = null;
+  try {
+    await dispatch(myApp, "/x", { awaitGenes: true });
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught != null).toBe(true);
 });
 
 test("dispatch reads signal from request.signal when no options.signal", async () => {
