@@ -105,6 +105,7 @@ export type GuardContext<Params: AnyParams = AnyParams> = {
   +matched: $ReadOnlyArray<string>,
   +signal: ?AbortSignal,
   +method: HttpMethod,
+  +appliedGuards: $ReadOnlyArray<string>,
 };
 
 export type GuardResult =
@@ -325,11 +326,15 @@ export type ResolvedRender = {
 
 export type DispatchResult =
   | { +kind: "render", +render: ResolvedRender }
-  | { +kind: "redirect", +signal: RedirectSignal }
-  | { +kind: "notFound", +signal: NotFoundSignal }
-  | { +kind: "forbidden", +signal: ForbiddenSignal }
-  | { +kind: "badRequest", +signal: BadRequestSignal }
-  | { +kind: "methodNotAllowed", +signal: MethodNotAllowedSignal };
+  | { +kind: "redirect", +signal: RedirectSignal, +blockingGuard?: string }
+  | { +kind: "notFound", +signal: NotFoundSignal, +blockingGuard?: string }
+  | { +kind: "forbidden", +signal: ForbiddenSignal, +blockingGuard?: string }
+  | { +kind: "badRequest", +signal: BadRequestSignal, +blockingGuard?: string }
+  | {
+      +kind: "methodNotAllowed",
+      +signal: MethodNotAllowedSignal,
+      +blockingGuard?: string,
+    };
 
 export type NavigationTarget = string | URL | {
   +to: string,

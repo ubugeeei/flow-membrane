@@ -246,6 +246,12 @@ function collectAllowedMethods(match: RouteMatch): ?$ReadOnlyArray<HttpMethod> {
   return merged;
 }
 
+type GuardOutcome = {
+  +signal: ?RouteSignal,
+  +blockingGuard: ?string,
+  +appliedGuards: $ReadOnlyArray<string>,
+};
+
 async function runGuards(
   guards: $ReadOnlyArray<Guard<AnyParams>>,
   match: RouteMatch,
@@ -255,8 +261,9 @@ async function runGuards(
   state: { +[string]: mixed },
   signal: ?AbortSignal,
   method: HttpMethod,
-): Promise<?RouteSignal> {
+): Promise<GuardOutcome> {
   const matched = match.ancestors.map(ancestor => ancestor.id).concat([match.route.id]);
+  const applied: Array<string> = [];
   for (const guardEntry of guards) {
     checkAborted(signal);
     let result;
@@ -270,25 +277,36 @@ async function runGuards(
         matched,
         signal,
         method,
+        appliedGuards: applied,
       });
     } catch (thrown) {
       const routeSignal = signalOf(thrown);
       if (routeSignal != null) {
-        return routeSignal;
+        return { signal: routeSignal, blockingGuard: guardEntry.id, appliedGuards: applied };
       }
       throw thrown;
     }
     if (result === true) {
+      applied.push(guardEntry.id);
       continue;
     }
     if (result === false) {
-      return { kind: "forbidden" };
+      return {
+        signal: { kind: "forbidden" },
+        blockingGuard: guardEntry.id,
+        appliedGuards: applied,
+      };
     }
     if (result != null && typeof result === "object" && typeof (result as $FlowFixMe).kind === "string") {
-      return result as $FlowFixMe as RouteSignal;
+      return {
+        signal: result as $FlowFixMe as RouteSignal,
+        blockingGuard: guardEntry.id,
+        appliedGuards: applied,
+      };
     }
+    applied.push(guardEntry.id);
   }
-  return null;
+  return { signal: null, blockingGuard: null, appliedGuards: applied };
 }
 
 export async function dispatch(
@@ -362,12 +380,13 @@ export async function dispatch(
   }
 
   let outcome: ?DispatchResult = null;
+  let appliedSoFar: $ReadOnlyArray<string> = [];
 
   try {
     await runMiddlewareChain(middlewares, middlewareContext, async () => {
       checkAborted(abortSignal);
       const guards = collectRouteGuards(match);
-      const guardSignal = await runGuards(
+      const guardOutcome = await runGuards(
         guards,
         match,
         url,
@@ -377,24 +396,27 @@ export async function dispatch(
         abortSignal,
         method,
       );
-      if (guardSignal != null) {
+      appliedSoFar = guardOutcome.appliedGuards;
+      if (guardOutcome.signal != null) {
+        const guardSignal: RouteSignal = guardOutcome.signal;
+        const blockingGuard = guardOutcome.blockingGuard ?? undefined;
         if (guardSignal.kind === "redirect") {
-          outcome = { kind: "redirect", signal: guardSignal };
+          outcome = { kind: "redirect", signal: guardSignal, blockingGuard };
           return;
         }
         if (guardSignal.kind === "forbidden") {
-          outcome = { kind: "forbidden", signal: guardSignal };
+          outcome = { kind: "forbidden", signal: guardSignal, blockingGuard };
           return;
         }
         if (guardSignal.kind === "badRequest") {
-          outcome = { kind: "badRequest", signal: guardSignal };
+          outcome = { kind: "badRequest", signal: guardSignal, blockingGuard };
           return;
         }
         if (guardSignal.kind === "methodNotAllowed") {
-          outcome = { kind: "methodNotAllowed", signal: guardSignal };
+          outcome = { kind: "methodNotAllowed", signal: guardSignal, blockingGuard };
           return;
         }
-        outcome = { kind: "notFound", signal: guardSignal };
+        outcome = { kind: "notFound", signal: guardSignal, blockingGuard };
         return;
       }
 
@@ -435,6 +457,7 @@ export async function dispatch(
               matched: match.ancestors.map(a => a.id).concat([match.route.id]),
               signal: abortSignal,
               method,
+              appliedGuards: appliedSoFar,
             });
             if (result === false) {
               configGuardSignal = { kind: "forbidden" };
@@ -490,16 +513,17 @@ export async function dispatch(
       }
 
       if (configGuardSignal != null) {
+        const blockingGuard = `${match.route.id}:config`;
         if (configGuardSignal.kind === "redirect") {
-          outcome = { kind: "redirect", signal: configGuardSignal };
+          outcome = { kind: "redirect", signal: configGuardSignal, blockingGuard };
         } else if (configGuardSignal.kind === "forbidden") {
-          outcome = { kind: "forbidden", signal: configGuardSignal };
+          outcome = { kind: "forbidden", signal: configGuardSignal, blockingGuard };
         } else if (configGuardSignal.kind === "badRequest") {
-          outcome = { kind: "badRequest", signal: configGuardSignal };
+          outcome = { kind: "badRequest", signal: configGuardSignal, blockingGuard };
         } else if (configGuardSignal.kind === "methodNotAllowed") {
-          outcome = { kind: "methodNotAllowed", signal: configGuardSignal };
+          outcome = { kind: "methodNotAllowed", signal: configGuardSignal, blockingGuard };
         } else {
-          outcome = { kind: "notFound", signal: configGuardSignal };
+          outcome = { kind: "notFound", signal: configGuardSignal, blockingGuard };
         }
         return;
       }

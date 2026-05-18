@@ -690,6 +690,83 @@ test("generic action handler runs for any non-GET/HEAD method", async () => {
   expect(calls).toEqual(["PUT", "DELETE"]);
 });
 
+test("blockingGuard is reported on failing dispatch result", async () => {
+  const myApp = app({
+    routes: [
+      group("/admin", {
+        id: "admin",
+        guard: guard(({ session }) => session.user != null, "auth"),
+        routes: [
+          route("/secret", {
+            id: "admin.secret",
+            guard: guard(() => false, "perm"),
+            module: homeModule(),
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const noUser = await dispatch(myApp, "/admin/secret");
+  expect(noUser.kind).toBe("forbidden");
+  if (noUser.kind === "forbidden") {
+    expect(noUser.blockingGuard).toBe("auth");
+  }
+
+  const withUser = await dispatch(myApp, "/admin/secret", {
+    session: { user: { id: "1" } },
+  });
+  expect(withUser.kind).toBe("forbidden");
+  if (withUser.kind === "forbidden") {
+    expect(withUser.blockingGuard).toBe("perm");
+  }
+});
+
+test("appliedGuards reflects guards that passed before the current one", async () => {
+  const seen = [];
+  const myApp = app({
+    routes: [
+      group("/x", {
+        id: "x",
+        guard: guard(() => true, "first"),
+        routes: [
+          route("/y", {
+            id: "x.y",
+            guard: guard(ctx => {
+              seen.push(Array.from(ctx.appliedGuards));
+              return true;
+            }, "second"),
+            module: homeModule(),
+          }),
+        ],
+      }),
+    ],
+  });
+  await dispatch(myApp, "/x/y");
+  expect(seen).toEqual([["first"]]);
+});
+
+test("membrane config guard reports blockingGuard with :config suffix", async () => {
+  const myApp = app({
+    routes: [
+      route("/x", {
+        id: "x",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            guard: () => false,
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/x");
+  expect(result.kind).toBe("forbidden");
+  if (result.kind === "forbidden") {
+    expect(result.blockingGuard).toBe("x:config");
+  }
+});
+
 test("dispatch reads signal from request.signal when no options.signal", async () => {
   const controller = new AbortController();
   controller.abort();
