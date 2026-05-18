@@ -318,11 +318,24 @@ export type DispatchOptions = {
   +signal?: AbortSignal,
 };
 
+export type RouteMetadata = {
+  +title?: string,
+  +description?: string,
+  +canonical?: string,
+  +robots?: string,
+  +og?: { +[string]: string },
+  +twitter?: { +[string]: string },
+  +meta?: $ReadOnlyArray<{ +name?: string, +property?: string, +content: string }>,
+  +link?: $ReadOnlyArray<{ +rel: string, +href: string, +[string]: mixed }>,
+  ...
+};
+
 export type ResolvedRender = {
   +match: RouteMatch,
   +module: RouteModule<AnyParams, mixed>,
   +layouts: $ReadOnlyArray<LayoutModule>,
   +context: RouteContext<AnyParams, mixed>,
+  +metadata: mixed,
 };
 
 export type DispatchResult =

@@ -16,6 +16,7 @@ const {
   notFound,
   parseCookieHeader,
   redirect,
+  renderMetaTags,
   route,
   serializeCookie,
   isBadRequest,
@@ -887,6 +888,83 @@ test("redirect signal carries setCookies through dispatch", async () => {
     expect(result.signal.setCookies?.length).toBe(1);
     expect(result.signal.setCookies?.[0]).toBe(sessionCookie);
   }
+});
+
+test("dispatch resolves function metadata against route context", async () => {
+  const myApp = app({
+    routes: [
+      route("/p/:id", {
+        id: "product",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            metadata: ctx => ({
+              title: `Product ${ctx.params.id}`,
+              description: "A great product",
+            }),
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/p/42");
+  expect(result.kind).toBe("render");
+  if (result.kind === "render") {
+    expect(result.render.metadata.title).toBe("Product 42");
+    expect(result.render.metadata.description).toBe("A great product");
+  }
+});
+
+test("dispatch passes through static metadata", async () => {
+  const myApp = app({
+    routes: [
+      route("/", {
+        id: "home",
+        module: lazy(async () => ({
+          default: () => null,
+          config: membrane({
+            metadata: { title: "Home" },
+          }),
+        })),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/");
+  if (result.kind === "render") {
+    expect(result.render.metadata.title).toBe("Home");
+  }
+});
+
+test("renderMetaTags emits title, meta, link, og, twitter tags", () => {
+  const tags = renderMetaTags({
+    title: "Hi",
+    description: "desc",
+    canonical: "https://example.com/x",
+    robots: "noindex",
+    og: { type: "article", image: "https://example.com/img.png" },
+    twitter: { card: "summary" },
+    meta: [{ name: "theme-color", content: "#fff" }],
+    link: [{ rel: "icon", href: "/icon.png" }],
+  });
+  const titles = tags.filter(t => t.tag === "title");
+  expect(titles.length).toBe(1);
+  expect(titles[0].text).toBe("Hi");
+  const metas = tags.filter(t => t.tag === "meta");
+  expect(metas.some(t => t.attrs.name === "description" && t.attrs.content === "desc")).toBe(true);
+  expect(metas.some(t => t.attrs.property === "og:title")).toBe(true);
+  expect(metas.some(t => t.attrs.property === "og:image")).toBe(true);
+  expect(metas.some(t => t.attrs.name === "twitter:card")).toBe(true);
+  expect(metas.some(t => t.attrs.name === "theme-color")).toBe(true);
+  expect(metas.some(t => t.attrs.name === "robots" && t.attrs.content === "noindex")).toBe(true);
+  const links = tags.filter(t => t.tag === "link");
+  expect(links.some(t => t.attrs.rel === "canonical")).toBe(true);
+  expect(links.some(t => t.attrs.rel === "icon" && t.attrs.href === "/icon.png")).toBe(true);
+});
+
+test("renderMetaTags returns empty array for null/non-object metadata", () => {
+  expect(renderMetaTags(null)).toEqual([]);
+  expect(renderMetaTags("string")).toEqual([]);
+  expect(renderMetaTags(42)).toEqual([]);
 });
 
 test("dispatch reads signal from request.signal when no options.signal", async () => {

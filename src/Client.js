@@ -13,10 +13,12 @@ export type {
 
 export {
   Link,
+  MetadataProvider,
   NavigationProvider,
   getDefaultNavigation,
   navigate,
   useApp,
+  useMetadata,
   useNavigation,
   useRouteMatch,
   useUrl,
