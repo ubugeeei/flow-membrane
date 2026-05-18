@@ -95,6 +95,7 @@ export {
   serializeCookie,
 } from "./Cookie";
 export { renderMetaTags } from "./Metadata";
+export { renderBoundary, renderResolved } from "./Render";
 export {
   createNavigation,
   hrefFor,

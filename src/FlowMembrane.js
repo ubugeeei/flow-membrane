@@ -113,3 +113,4 @@ export {
   useUrl,
 } from "./React";
 export { renderMetaTags } from "./Metadata";
+export { renderBoundary, renderResolved } from "./Render";

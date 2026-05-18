@@ -1,5 +1,8 @@
 /* eslint-disable no-undef */
 
+const React = require("react");
+const ReactDOMServer = require("react-dom/server");
+
 const {
   app,
   badRequest,
@@ -16,7 +19,9 @@ const {
   notFound,
   parseCookieHeader,
   redirect,
+  renderBoundary,
   renderMetaTags,
+  renderResolved,
   route,
   serializeCookie,
   isBadRequest,
@@ -965,6 +970,90 @@ test("renderMetaTags returns empty array for null/non-object metadata", () => {
   expect(renderMetaTags(null)).toEqual([]);
   expect(renderMetaTags("string")).toEqual([]);
   expect(renderMetaTags(42)).toEqual([]);
+});
+
+test("renderResolved composes ancestor layouts around the route component", async () => {
+  const Layout = props => React.createElement("section", { className: "layout" }, props.children);
+  const Page = ctx => React.createElement("h1", null, `id=${String(ctx.params.id)}`);
+  const myApp = app({
+    routes: [
+      group("/dashboard", {
+        id: "dash",
+        layout: lazy(async () => ({ default: Layout, __esModule: true })),
+        routes: [
+          route("/users/:id", {
+            id: "user",
+            module: lazy(async () => ({ default: Page, __esModule: true })),
+          }),
+        ],
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/dashboard/users/42");
+  if (result.kind !== "render") {
+    throw new Error("expected render");
+  }
+  const html = ReactDOMServer.renderToString(renderResolved(result.render));
+  expect(html.includes('class="layout"')).toBe(true);
+  expect(html.includes("id=42")).toBe(true);
+});
+
+test("renderBoundary returns notFound component for notFound result", async () => {
+  const NotFound = () => React.createElement("p", null, "404");
+  const myApp = app({
+    routes: [route("/", { id: "home", module: homeModule() })],
+  });
+  const result = await dispatch(myApp, "/missing");
+  const node = renderBoundary(result, { boundary: { notFound: NotFound } });
+  const html = ReactDOMServer.renderToString(node);
+  expect(html).toBe("<p>404</p>");
+});
+
+test("renderBoundary returns forbidden component for forbidden result", async () => {
+  const Forbidden = () => React.createElement("p", null, "no");
+  const myApp = app({
+    routes: [
+      route("/x", {
+        id: "x",
+        guard: () => false,
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/x");
+  const node = renderBoundary(result, { boundary: { forbidden: Forbidden } });
+  const html = ReactDOMServer.renderToString(node);
+  expect(html).toBe("<p>no</p>");
+});
+
+test("renderBoundary returns null for redirect / badRequest / methodNotAllowed", async () => {
+  const myApp = app({
+    routes: [
+      route("/r", {
+        id: "r",
+        guard: () => { redirect("/x"); },
+        module: homeModule(),
+      }),
+      route("/q", {
+        id: "q",
+        query: { n: codecs.query.int() },
+        module: homeModule(),
+      }),
+      route("/m", {
+        id: "m",
+        methods: ["GET"],
+        module: homeModule(),
+      }),
+    ],
+  });
+  const r1 = await dispatch(myApp, "/r");
+  expect(renderBoundary(r1)).toBe(null);
+  const r2 = await dispatch(myApp, "/q?n=NaN");
+  expect(renderBoundary(r2)).toBe(null);
+  const r3 = await dispatch(myApp, "/m", {
+    request: { url: "/m", method: "POST", headers: {} },
+  });
+  expect(renderBoundary(r3)).toBe(null);
 });
 
 test("dispatch reads signal from request.signal when no options.signal", async () => {
