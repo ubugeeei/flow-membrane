@@ -1,0 +1,157 @@
+/* @flow strict */
+
+export type AnyParams = { +[string]: mixed };
+export type AnyQuery = { +[string]: string | $ReadOnlyArray<string> };
+
+export type ParamCodec<T> = {
+  +parse: (raw: string) => T,
+  +serialize: (value: T) => string,
+  +name: string,
+};
+
+export type ParamCodecs = { +[string]: ParamCodec<mixed> };
+
+export type CompiledSegment =
+  | { +kind: "literal", +value: string }
+  | { +kind: "param", +name: string, +codec: ?ParamCodec<mixed> }
+  | { +kind: "catchAll", +name: string };
+
+export type CompiledPath = {
+  +pattern: string,
+  +segments: $ReadOnlyArray<CompiledSegment>,
+  +paramNames: $ReadOnlyArray<string>,
+};
+
+export type LazyState<T> =
+  | { +status: "idle" }
+  | { +status: "loading", +promise: Promise<T> }
+  | { +status: "loaded", +value: T }
+  | { +status: "rejected", +error: mixed };
+
+export interface Lazy<T> {
+  +load: () => Promise<T>;
+  +read: () => T;
+  +peek: () => ?T;
+  +preload: () => Promise<T>;
+  +state: () => LazyState<T>;
+}
+
+export type RequestLike = {
+  +url: string,
+  +method?: string,
+  +headers?: { +[string]: string },
+  +signal?: AbortSignal,
+  ...
+};
+
+export type SessionLike = { +[string]: mixed };
+
+export type MiddlewareContext = {
+  request: RequestLike,
+  url: URL,
+  headers: { +[string]: string },
+  cookies: { +[string]: string },
+  session: SessionLike,
+  state: { [string]: mixed },
+};
+
+export type MiddlewareNext = () => Promise<mixed> | mixed;
+export type MiddlewareFn = (
+  context: MiddlewareContext,
+  next: MiddlewareNext,
+) => Promise<mixed> | mixed;
+
+export type Middleware = {
+  +kind: "middleware",
+  +id: string,
+  +run: MiddlewareFn,
+};
+
+export type GuardContext<Params: AnyParams = AnyParams> = {
+  +params: Params,
+  +url: URL,
+  +request: RequestLike,
+  +session: SessionLike,
+  +state: { +[string]: mixed },
+  +matched: $ReadOnlyArray<string>,
+};
+
+export type RedirectSignal = {
+  +kind: "redirect",
+  +to: string,
+  +status: 301 | 302 | 303 | 307 | 308,
+  +headers?: { +[string]: string },
+};
+
+export type NotFoundSignal = { +kind: "notFound", +message?: string };
+export type ForbiddenSignal = { +kind: "forbidden", +message?: string };
+export type RouteSignal = RedirectSignal | NotFoundSignal | ForbiddenSignal;
+export type GuardResult = true | false | RedirectSignal | NotFoundSignal | ForbiddenSignal;
+export type GuardFn<Params: AnyParams = AnyParams> = (
+  context: GuardContext<Params>,
+) => GuardResult | Promise<GuardResult>;
+
+export type Guard<Params: AnyParams = AnyParams> = {
+  +kind: "guard",
+  +id: string,
+  +run: GuardFn<Params>,
+};
+
+declare export function app(options: any): any;
+declare export function route<Params: AnyParams = AnyParams>(
+  path: string,
+  options: any,
+): any;
+declare export function group<Params: AnyParams = AnyParams>(
+  path: string,
+  options: any,
+): any;
+declare export function middleware(fn: MiddlewareFn, id?: string): Middleware;
+declare export function guard<Params: AnyParams = AnyParams>(
+  fn: GuardFn<Params>,
+  id?: string,
+): Guard<Params>;
+declare export function lazy<T>(loader: () => Promise<T>): Lazy<T>;
+declare export function resolved<T>(value: T): Lazy<T>;
+declare export function membrane<Params: AnyParams = AnyParams, Genes = {}>(
+  config: any,
+): any;
+declare export function matchRoute(
+  routes: $ReadOnlyArray<any>,
+  url: string | URL,
+): any;
+declare export function dispatch(
+  app: any,
+  input: string | URL,
+  options?: any,
+): Promise<any>;
+declare export function redirect(
+  to: string,
+  params?: { +status?: 301 | 302 | 303 | 307 | 308, +headers?: { +[string]: string } },
+): empty;
+declare export function notFound(message?: string): empty;
+declare export function forbidden(message?: string): empty;
+declare export function isRedirect(value: mixed): boolean;
+declare export function isNotFound(value: mixed): boolean;
+declare export function isForbidden(value: mixed): boolean;
+declare export function isSignal(value: mixed): boolean;
+declare export function isSignalError(value: mixed): boolean;
+declare export function signalOf(value: mixed): ?RouteSignal;
+declare export var codecs: {
+  +string: () => ParamCodec<string>,
+  +int: () => ParamCodec<number>,
+  +uuid: () => ParamCodec<string>,
+  +id: <T>() => ParamCodec<T>,
+};
+declare export function createNavigation(options?: { +initial?: URL }): any;
+declare export function hrefFor(
+  app: any,
+  routeId: string,
+  params: AnyParams,
+  query?: AnyQuery,
+  hash?: string,
+): string;
+declare export function previewMatch(
+  app: any,
+  target: any,
+): any;

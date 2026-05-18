@@ -1,0 +1,25 @@
+[ignore]
+.*/node_modules/.*
+.*/dist/.*
+.*/.test-build/.*
+<PROJECT_ROOT>/FlowMembrane.js
+<PROJECT_ROOT>/FlowMembrane.mjs
+<PROJECT_ROOT>/FlowMembrane.js.flow
+<PROJECT_ROOT>/src/FlowMembrane.test.js
+
+[include]
+<PROJECT_ROOT>/src
+
+[libs]
+<PROJECT_ROOT>/flow-typed
+
+[lints]
+
+[options]
+component_syntax=true
+module.name_mapper='^flow-membrane$' -> '<PROJECT_ROOT>/src/FlowMembrane.js'
+module.name_mapper='^flow-membrane/client$' -> '<PROJECT_ROOT>/src/Client.js'
+module.name_mapper='^flow-membrane/server$' -> '<PROJECT_ROOT>/src/Server.js'
+react.runtime=automatic
+
+[strict]

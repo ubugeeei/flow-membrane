@@ -1,0 +1,73 @@
+/* @flow strict */
+
+import type * as React from "react";
+
+export type NavigationTarget = string | URL | {
+  +to: string,
+  +params?: { +[string]: mixed },
+  +query?: { +[string]: string | $ReadOnlyArray<string> },
+  +hash?: string,
+};
+
+export type NavigationDirection = "push" | "replace" | "pop";
+
+export type NavigationEvent = {
+  +to: URL,
+  +from: ?URL,
+  +direction: NavigationDirection,
+  +cancel: () => void,
+  +allowed: () => boolean,
+};
+
+export type NavigationBeforeLeaveFn = (
+  event: NavigationEvent,
+) => boolean | string | Promise<boolean | string>;
+
+export type NavigateOptions = {
+  +replace?: boolean,
+  +scroll?: "restore" | "top" | "preserve",
+  +transition?: boolean,
+  +data?: mixed,
+};
+
+export interface Navigation {
+  +current: any;
+  +pending: any;
+  beforeLeave(fn: NavigationBeforeLeaveFn): () => void;
+  navigate(target: NavigationTarget, options?: NavigateOptions): Promise<void>;
+  reload(): Promise<void>;
+  back(): void;
+  forward(): void;
+}
+
+export type LinkProps = {
+  +to: NavigationTarget,
+  +prefetch?: "intent" | "render" | "viewport" | "none",
+  +replace?: boolean,
+  +scroll?: "restore" | "top" | "preserve",
+  +children?: React.Node,
+  +className?: string,
+  +style?: { +[string]: mixed },
+  +onClick?: (event: SyntheticMouseEvent<HTMLAnchorElement>) => mixed,
+  ...
+};
+
+declare export function Link(props: LinkProps): React.Node;
+declare export function NavigationProvider(props: {
+  +navigation?: Navigation,
+  +app?: any,
+  +children?: React.Node,
+}): React.Node;
+declare export function getDefaultNavigation(): Navigation;
+declare export function navigate(
+  target: NavigationTarget,
+  options?: NavigateOptions,
+): Promise<void>;
+declare export function useApp(): ?any;
+declare export function useNavigation(): Navigation;
+declare export function useRouteMatch(): ?{
+  +pathname: string,
+  +params: { +[string]: mixed },
+  +routeId: string,
+};
+declare export function useUrl(): URL;
