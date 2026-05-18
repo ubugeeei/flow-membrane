@@ -295,6 +295,59 @@ test("lazy preloads modules and reads cached value", async () => {
   expect(typeof mod.read).toBe("function");
 });
 
+test("lazy caches rejection and does not auto-retry until invalidate()", async () => {
+  let attempts = 0;
+  const mod = lazy(async () => {
+    attempts += 1;
+    throw new Error("boom");
+  });
+  let err1 = null;
+  try { await mod.load(); } catch (e) { err1 = e; }
+  let err2 = null;
+  try { await mod.load(); } catch (e) { err2 = e; }
+  expect(attempts).toBe(1);
+  expect(err1).not.toBe(null);
+  expect(err1).toBe(err2);
+
+  mod.invalidate();
+  let err3 = null;
+  try { await mod.load(); } catch (e) { err3 = e; }
+  expect(attempts).toBe(2);
+  expect(err3 instanceof Error).toBe(true);
+});
+
+test("lazy read() throws cached rejection synchronously", async () => {
+  const mod = lazy(async () => {
+    throw new Error("nope");
+  });
+  try { await mod.load(); } catch (_e) {}
+  let caught = null;
+  try { mod.read(); } catch (e) { caught = e; }
+  expect(caught).not.toBe(null);
+  expect(caught instanceof Error).toBe(true);
+});
+
+test("dispatch surfaces module load failure as a thrown error", async () => {
+  const myApp = app({
+    routes: [
+      route("/bad", {
+        id: "bad",
+        module: lazy(async () => {
+          throw new Error("module exploded");
+        }),
+      }),
+    ],
+  });
+  let caught = null;
+  try {
+    await dispatch(myApp, "/bad");
+  } catch (e) {
+    caught = e;
+  }
+  expect(caught).not.toBe(null);
+  expect(caught instanceof Error).toBe(true);
+});
+
 test("dispatch rejects with AbortError when signal pre-aborted", async () => {
   const myApp = app({
     routes: [route("/", { id: "root", module: homeModule() })],

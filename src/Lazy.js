@@ -43,6 +43,9 @@ class LazyImpl<T> {
     if (this._state.status === "loading") {
       return this._state.promise;
     }
+    if (this._state.status === "rejected") {
+      return Promise.reject(this._state.error);
+    }
     const promise = Promise.resolve()
       .then(() => this._loader())
       .then(value => {
@@ -60,6 +63,13 @@ class LazyImpl<T> {
 
   preload(): Promise<T> {
     return this.load();
+  }
+
+  invalidate(): void {
+    if (this._state.status === "loading") {
+      return;
+    }
+    this._state = { status: "idle" };
   }
 
   read(): T {
@@ -84,6 +94,7 @@ export function lazy<T>(loader: Loader<T>): Lazy<T> {
     peek: () => impl.peek(),
     preload: () => impl.preload(),
     state: () => impl.state(),
+    invalidate: () => impl.invalidate(),
   };
 }
 
@@ -94,5 +105,6 @@ export function resolved<T>(value: T): Lazy<T> {
     peek: () => value,
     preload: () => Promise.resolve(value),
     state: () => ({ status: "loaded", value }),
+    invalidate: () => undefined,
   };
 }
