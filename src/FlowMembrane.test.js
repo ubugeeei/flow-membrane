@@ -4,6 +4,7 @@ const {
   app,
   badRequest,
   codecs,
+  clearCookie,
   dispatch,
   forbidden,
   group,
@@ -13,8 +14,10 @@ const {
   membrane,
   middleware,
   notFound,
+  parseCookieHeader,
   redirect,
   route,
+  serializeCookie,
   isBadRequest,
   isRedirect,
   isNotFound,
@@ -764,6 +767,70 @@ test("membrane config guard reports blockingGuard with :config suffix", async ()
   expect(result.kind).toBe("forbidden");
   if (result.kind === "forbidden") {
     expect(result.blockingGuard).toBe("x:config");
+  }
+});
+
+test("serializeCookie produces secure attribute string with sensible defaults", () => {
+  const cookie = serializeCookie("session", "abc123", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Strict",
+    maxAge: 3600,
+  });
+  expect(cookie.startsWith("session=abc123")).toBe(true);
+  expect(cookie.includes("HttpOnly")).toBe(true);
+  expect(cookie.includes("Secure")).toBe(true);
+  expect(cookie.includes("SameSite=Strict")).toBe(true);
+  expect(cookie.includes("Max-Age=3600")).toBe(true);
+  expect(cookie.includes("Path=/")).toBe(true);
+});
+
+test("serializeCookie defaults SameSite=Lax and adds Secure for SameSite=None", () => {
+  const lax = serializeCookie("k", "v");
+  expect(lax.includes("SameSite=Lax")).toBe(true);
+  const none = serializeCookie("k", "v", { sameSite: "None" });
+  expect(none.includes("Secure")).toBe(true);
+  expect(none.includes("SameSite=None")).toBe(true);
+});
+
+test("clearCookie issues expired cookie", () => {
+  const cookie = clearCookie("session");
+  expect(cookie.includes("Max-Age=0")).toBe(true);
+  expect(cookie.includes("Expires=Thu, 01 Jan 1970")).toBe(true);
+});
+
+test("parseCookieHeader handles missing and malformed entries", () => {
+  expect(parseCookieHeader(null)).toEqual({});
+  expect(parseCookieHeader("")).toEqual({});
+  expect(parseCookieHeader("a=1; b=2"))
+    .toEqual({ a: "1", b: "2" });
+  expect(parseCookieHeader("standalone")).toEqual({ standalone: "" });
+});
+
+test("redirect signal carries setCookies through dispatch", async () => {
+  const sessionCookie = serializeCookie("session", "tok", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Strict",
+  });
+  const myApp = app({
+    routes: [
+      route("/login", {
+        id: "login",
+        guard: () => {
+          redirect("/dashboard", { setCookies: [sessionCookie] });
+        },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/login");
+  expect(result.kind).toBe("redirect");
+  if (result.kind === "redirect") {
+    expect(result.signal.to).toBe("/dashboard");
+    expect(Array.isArray(result.signal.setCookies)).toBe(true);
+    expect(result.signal.setCookies?.length).toBe(1);
+    expect(result.signal.setCookies?.[0]).toBe(sessionCookie);
   }
 });
 

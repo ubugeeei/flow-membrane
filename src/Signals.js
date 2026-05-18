@@ -47,6 +47,7 @@ export function redirect(
   params?: {
     +status?: 301 | 302 | 303 | 307 | 308,
     +headers?: { +[string]: string },
+    +setCookies?: $ReadOnlyArray<string>,
   },
 ): empty {
   const signal: RedirectSignal = {
@@ -54,6 +55,7 @@ export function redirect(
     to,
     status: params?.status ?? 307,
     headers: params?.headers,
+    setCookies: params?.setCookies,
   };
   throw new MembraneSignalError(signal);
 }
@@ -102,6 +104,7 @@ export function makeRedirect(
   params?: {
     +status?: 301 | 302 | 303 | 307 | 308,
     +headers?: { +[string]: string },
+    +setCookies?: $ReadOnlyArray<string>,
   },
 ): RedirectSignal {
   return {
@@ -109,6 +112,7 @@ export function makeRedirect(
     to,
     status: params?.status ?? 307,
     headers: params?.headers,
+    setCookies: params?.setCookies,
   };
 }
 

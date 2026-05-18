@@ -87,6 +87,11 @@ export { matchRoute } from "./Match";
 export { dispatch } from "./Dispatch";
 export { AbortError, isAbortError } from "./Abort";
 export {
+  clearCookie,
+  parseCookieHeader,
+  serializeCookie,
+} from "./Cookie";
+export {
   createNavigation,
   hrefFor,
   previewMatch,
