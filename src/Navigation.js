@@ -26,6 +26,8 @@ import type {
   NavigationTarget,
   NavigateOptions,
   RouteNode,
+  ScrollBehavior,
+  ScrollPosition,
 } from "./Types";
 
 let nextNavigationId = 0;
@@ -61,10 +63,48 @@ export type NavigationOptions = {
   +initial?: URL,
 };
 
+function urlKey(url: URL | string): string {
+  if (typeof url === "string") {
+    return url;
+  }
+  return url.pathname + url.search;
+}
+
+function readCurrentScroll(): ScrollPosition {
+  const g: $FlowFixMe = globalThis;
+  const x = typeof g.scrollX === "number"
+    ? g.scrollX
+    : (g.pageXOffset != null ? g.pageXOffset : 0);
+  const y = typeof g.scrollY === "number"
+    ? g.scrollY
+    : (g.pageYOffset != null ? g.pageYOffset : 0);
+  return { x, y };
+}
+
+function applyScroll(behavior: ScrollBehavior, position: ?ScrollPosition): void {
+  if (behavior === "preserve") {
+    return;
+  }
+  const g: $FlowFixMe = globalThis;
+  if (typeof g.scrollTo !== "function") {
+    return;
+  }
+  if (behavior === "top") {
+    g.scrollTo(0, 0);
+    return;
+  }
+  if (position != null) {
+    g.scrollTo(position.x, position.y);
+    return;
+  }
+  g.scrollTo(0, 0);
+}
+
 class NavigationImpl implements Navigation {
   current: Cell<URL>;
   _pending: Cell<boolean>;
   _guards: Set<NavigationBeforeLeaveFn> = new Set();
+  _scroll: Map<string, ScrollPosition> = new Map();
 
   constructor(options?: NavigationOptions): void {
     const initial = options?.initial ?? new URL("/", "http://flow-membrane.local");
@@ -81,6 +121,14 @@ class NavigationImpl implements Navigation {
     return () => {
       this._guards.delete(fn);
     };
+  }
+
+  saveScroll(url: URL | string, position: ScrollPosition): void {
+    this._scroll.set(urlKey(url), position);
+  }
+
+  getScroll(url: URL | string): ?ScrollPosition {
+    return this._scroll.get(urlKey(url));
   }
 
   async _confirmLeave(event: NavigationEvent): Promise<boolean> {
@@ -104,6 +152,22 @@ class NavigationImpl implements Navigation {
     return true;
   }
 
+  async _commit(
+    next: URL,
+    direction: NavigationDirection,
+    scroll: ScrollBehavior,
+    previous: URL,
+  ): Promise<void> {
+    if (direction === "push" || direction === "replace") {
+      this._scroll.set(urlKey(previous), readCurrentScroll());
+    }
+    transaction(() => {
+      this.current.set(next);
+    });
+    const stored = this._scroll.get(urlKey(next));
+    applyScroll(scroll, stored);
+  }
+
   async navigate(target: NavigationTarget, options?: NavigateOptions): Promise<void> {
     const previous = this.current.get();
     const next = resolveTarget(target, previous);
@@ -111,10 +175,11 @@ class NavigationImpl implements Navigation {
       return;
     }
     let cancelled = false;
+    const direction: NavigationDirection = options?.replace === true ? "replace" : "push";
     const event: NavigationEvent = {
       to: next,
       from: previous,
-      direction: options?.replace === true ? "replace" : "push",
+      direction,
       cancel: () => {
         cancelled = true;
       },
@@ -128,9 +193,47 @@ class NavigationImpl implements Navigation {
       if (!ok || cancelled) {
         return;
       }
+      const scroll: ScrollBehavior = options?.scroll ?? "restore";
+      await this._commit(next, direction, scroll, previous);
+    } finally {
+      transaction(() => {
+        this._pending.set(false);
+      });
+    }
+  }
+
+  async notifyPop(target: URL | string): Promise<void> {
+    const previous = this.current.get();
+    const next = typeof target === "string"
+      ? ensureUrl(target, previous)
+      : target;
+    if (next.toString() === previous.toString()) {
+      return;
+    }
+    let cancelled = false;
+    const event: NavigationEvent = {
+      to: next,
+      from: previous,
+      direction: "pop",
+      cancel: () => {
+        cancelled = true;
+      },
+      allowed: () => !cancelled,
+    };
+    transaction(() => {
+      this._pending.set(true);
+    });
+    try {
+      const ok = await this._confirmLeave(event);
+      if (!ok || cancelled) {
+        return;
+      }
+      this._scroll.set(urlKey(previous), readCurrentScroll());
       transaction(() => {
         this.current.set(next);
       });
+      const stored = this._scroll.get(urlKey(next));
+      applyScroll("restore", stored);
     } finally {
       transaction(() => {
         this._pending.set(false);
@@ -253,7 +356,3 @@ export function previewMatch(
   };
 }
 
-function unusedDirectionType(_d: NavigationDirection): NavigationDirection {
-  return _d;
-}
-unusedDirectionType("push");

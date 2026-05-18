@@ -55,6 +55,8 @@ export type {
   RouteNode,
   RouteOptions,
   RouteSignal,
+  ScrollBehavior,
+  ScrollPosition,
   SessionLike,
 } from "./Types";
 

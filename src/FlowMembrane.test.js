@@ -210,6 +210,61 @@ test("signal predicates classify values", () => {
   expect(isRedirect({ kind: "notFound" })).toBe(false);
 });
 
+test("navigation saves and restores scroll on back-style notifyPop", async () => {
+  const scrollCalls = [];
+  const stash = globalThis.scrollTo;
+  globalThis.scrollTo = (x, y) => { scrollCalls.push([x, y]); };
+  try {
+    const nav = createNavigation({
+      initial: new URL("/a", "http://test.local"),
+    });
+    nav.saveScroll("/a", { x: 0, y: 0 });
+    nav.saveScroll("/b", { x: 0, y: 0 });
+    Object.defineProperty(globalThis, "scrollY", { value: 250, configurable: true });
+    Object.defineProperty(globalThis, "scrollX", { value: 0, configurable: true });
+    await nav.navigate("/b");
+    Object.defineProperty(globalThis, "scrollY", { value: 100, configurable: true });
+    await nav.notifyPop("/a");
+    expect(nav.current.get().pathname).toBe("/a");
+    const lastCall = scrollCalls[scrollCalls.length - 1];
+    expect(lastCall[0]).toBe(0);
+    expect(lastCall[1]).toBe(250);
+  } finally {
+    globalThis.scrollTo = stash;
+  }
+});
+
+test("navigation scroll: \"top\" scrolls to (0, 0) regardless of saved", async () => {
+  const scrollCalls = [];
+  const stash = globalThis.scrollTo;
+  globalThis.scrollTo = (x, y) => { scrollCalls.push([x, y]); };
+  try {
+    const nav = createNavigation({
+      initial: new URL("/a", "http://test.local"),
+    });
+    nav.saveScroll("/b", { x: 99, y: 99 });
+    await nav.navigate("/b", { scroll: "top" });
+    expect(scrollCalls[scrollCalls.length - 1]).toEqual([0, 0]);
+  } finally {
+    globalThis.scrollTo = stash;
+  }
+});
+
+test("navigation scroll: \"preserve\" does not call scrollTo", async () => {
+  const scrollCalls = [];
+  const stash = globalThis.scrollTo;
+  globalThis.scrollTo = (x, y) => { scrollCalls.push([x, y]); };
+  try {
+    const nav = createNavigation({
+      initial: new URL("/a", "http://test.local"),
+    });
+    await nav.navigate("/b", { scroll: "preserve" });
+    expect(scrollCalls.length).toBe(0);
+  } finally {
+    globalThis.scrollTo = stash;
+  }
+});
+
 test("navigation registers and runs beforeLeave guard", async () => {
   const nav = createNavigation({
     initial: new URL("/", "http://test.local"),
