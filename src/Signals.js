@@ -3,6 +3,8 @@
 import type {
   BadRequestSignal,
   ForbiddenSignal,
+  HttpMethod,
+  MethodNotAllowedSignal,
   NotFoundSignal,
   RedirectSignal,
   RouteSignal,
@@ -81,6 +83,20 @@ export function badRequest(message?: string, cause?: mixed): empty {
   throw new MembraneSignalError(signal);
 }
 
+export function methodNotAllowed(
+  method: HttpMethod,
+  allowed: $ReadOnlyArray<HttpMethod>,
+  message?: string,
+): empty {
+  const signal: MethodNotAllowedSignal = {
+    kind: "methodNotAllowed",
+    method,
+    allowed,
+    message,
+  };
+  throw new MembraneSignalError(signal);
+}
+
 export function makeRedirect(
   to: string,
   params?: {
@@ -106,6 +122,14 @@ export function makeForbidden(message?: string): ForbiddenSignal {
 
 export function makeBadRequest(message?: string, cause?: mixed): BadRequestSignal {
   return { kind: "badRequest", message, cause };
+}
+
+export function makeMethodNotAllowed(
+  method: HttpMethod,
+  allowed: $ReadOnlyArray<HttpMethod>,
+  message?: string,
+): MethodNotAllowedSignal {
+  return { kind: "methodNotAllowed", method, allowed, message };
 }
 
 export function isRedirect(value: mixed): boolean {
@@ -141,11 +165,20 @@ export function isBadRequest(value: mixed): boolean {
   );
 }
 
+export function isMethodNotAllowed(value: mixed): boolean {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    (value as $FlowFixMe).kind === "methodNotAllowed"
+  );
+}
+
 export function isSignal(value: mixed): boolean {
   return (
     isRedirect(value) ||
     isNotFound(value) ||
     isForbidden(value) ||
-    isBadRequest(value)
+    isBadRequest(value) ||
+    isMethodNotAllowed(value)
   );
 }

@@ -104,6 +104,7 @@ export function route<Params: AnyParams = AnyParams>(
     middleware: normalizeMiddleware(options.middleware),
     paramCodecs: options.params ?? ({} as ParamCodecs),
     queryCodecs: options.query ?? ({} as QueryCodecs),
+    methods: options.methods ?? null,
   };
 }
 
@@ -128,6 +129,7 @@ export function group<Params: AnyParams = AnyParams>(
     middleware: normalizeMiddleware(options.middleware),
     paramCodecs: options.params ?? ({} as ParamCodecs),
     queryCodecs: options.query ?? ({} as QueryCodecs),
+    methods: options.methods ?? null,
     routes: options.routes,
   };
 }

@@ -17,6 +17,7 @@ import type {
   DispatchOptions,
   DispatchResult,
   Guard,
+  HttpMethod,
   LayoutModule,
   Middleware,
   MiddlewareContext,
@@ -183,6 +184,8 @@ function buildContext(
   state: { +[string]: mixed },
   genes: mixed,
   signal: ?AbortSignal,
+  method: HttpMethod,
+  actionResult?: mixed,
 ): RouteContext<AnyParams, mixed> {
   return {
     id: match.route.id,
@@ -195,7 +198,52 @@ function buildContext(
     request,
     state,
     signal,
+    method,
+    actionResult,
   };
+}
+
+function normalizeMethod(method: ?string): HttpMethod {
+  if (method == null || typeof method !== "string" || method === "") {
+    return "GET";
+  }
+  return method.toUpperCase();
+}
+
+function pickActionHandler(
+  moduleConfig: $FlowFixMe,
+  method: HttpMethod,
+): ?(ctx: RouteContext<AnyParams, mixed>) => mixed {
+  if (moduleConfig == null) {
+    return null;
+  }
+  const actions: $FlowFixMe = moduleConfig.actions;
+  if (actions != null && typeof actions === "object" && typeof actions[method] === "function") {
+    return actions[method];
+  }
+  if (method !== "GET" && method !== "HEAD" && typeof moduleConfig.action === "function") {
+    return moduleConfig.action;
+  }
+  return null;
+}
+
+function collectAllowedMethods(match: RouteMatch): ?$ReadOnlyArray<HttpMethod> {
+  let merged: ?Array<HttpMethod> = null;
+  for (const ancestor of match.ancestors) {
+    if (ancestor.methods != null) {
+      merged = merged == null
+        ? Array.from(ancestor.methods)
+        : merged.filter(m => ancestor.methods != null && ancestor.methods.includes(m));
+    }
+  }
+  if (match.route.methods != null) {
+    if (merged == null) {
+      merged = Array.from(match.route.methods);
+    } else {
+      merged = merged.filter(m => match.route.methods != null && match.route.methods.includes(m));
+    }
+  }
+  return merged;
 }
 
 async function runGuards(
@@ -206,6 +254,7 @@ async function runGuards(
   session: SessionLike,
   state: { +[string]: mixed },
   signal: ?AbortSignal,
+  method: HttpMethod,
 ): Promise<?RouteSignal> {
   const matched = match.ancestors.map(ancestor => ancestor.id).concat([match.route.id]);
   for (const guardEntry of guards) {
@@ -220,6 +269,7 @@ async function runGuards(
         state,
         matched,
         signal,
+        method,
       });
     } catch (thrown) {
       const routeSignal = signalOf(thrown);
@@ -278,6 +328,19 @@ export async function dispatch(
   const baseState: { [string]: mixed } = options?.state != null
     ? ({ ...(options.state as $FlowFixMe) } as { [string]: mixed })
     : ({} as { [string]: mixed });
+  const method: HttpMethod = normalizeMethod(request.method);
+
+  const allowed = collectAllowedMethods(match);
+  if (allowed != null && !allowed.includes(method)) {
+    return {
+      kind: "methodNotAllowed",
+      signal: {
+        kind: "methodNotAllowed",
+        method,
+        allowed,
+      },
+    };
+  }
 
   const middlewareContext: MiddlewareContext = {
     request,
@@ -287,6 +350,7 @@ export async function dispatch(
     session,
     state: baseState,
     signal: abortSignal,
+    method,
   };
 
   const middlewares: Array<Middleware> = [];
@@ -311,6 +375,7 @@ export async function dispatch(
         session,
         middlewareContext.state,
         abortSignal,
+        method,
       );
       if (guardSignal != null) {
         if (guardSignal.kind === "redirect") {
@@ -323,6 +388,10 @@ export async function dispatch(
         }
         if (guardSignal.kind === "badRequest") {
           outcome = { kind: "badRequest", signal: guardSignal };
+          return;
+        }
+        if (guardSignal.kind === "methodNotAllowed") {
+          outcome = { kind: "methodNotAllowed", signal: guardSignal };
           return;
         }
         outcome = { kind: "notFound", signal: guardSignal };
@@ -343,6 +412,7 @@ export async function dispatch(
       const moduleConfig = (module as $FlowFixMe).config;
       let genes: mixed = {};
       let configGuardSignal: ?RouteSignal = null;
+      let actionResult: mixed = undefined;
       if (moduleConfig != null) {
         const tempContext = buildContext(
           match,
@@ -352,6 +422,7 @@ export async function dispatch(
           middlewareContext.state,
           {},
           abortSignal,
+          method,
         );
         if (typeof moduleConfig.guard === "function") {
           try {
@@ -363,6 +434,7 @@ export async function dispatch(
               state: middlewareContext.state,
               matched: match.ancestors.map(a => a.id).concat([match.route.id]),
               signal: abortSignal,
+              method,
             });
             if (result === false) {
               configGuardSignal = { kind: "forbidden" };
@@ -384,6 +456,25 @@ export async function dispatch(
           }
         }
         checkAborted(abortSignal);
+        if (configGuardSignal == null) {
+          const handler: ?(ctx: RouteContext<AnyParams, mixed>) => mixed = pickActionHandler(
+            moduleConfig,
+            method,
+          );
+          if (handler != null) {
+            try {
+              actionResult = await handler(tempContext);
+            } catch (thrown) {
+              const sig = signalOf(thrown);
+              if (sig != null) {
+                configGuardSignal = sig;
+              } else {
+                throw thrown;
+              }
+            }
+            checkAborted(abortSignal);
+          }
+        }
         if (configGuardSignal == null && typeof moduleConfig.genes === "function") {
           try {
             genes = moduleConfig.genes(tempContext);
@@ -405,6 +496,8 @@ export async function dispatch(
           outcome = { kind: "forbidden", signal: configGuardSignal };
         } else if (configGuardSignal.kind === "badRequest") {
           outcome = { kind: "badRequest", signal: configGuardSignal };
+        } else if (configGuardSignal.kind === "methodNotAllowed") {
+          outcome = { kind: "methodNotAllowed", signal: configGuardSignal };
         } else {
           outcome = { kind: "notFound", signal: configGuardSignal };
         }
@@ -419,6 +512,8 @@ export async function dispatch(
         middlewareContext.state,
         genes,
         abortSignal,
+        method,
+        actionResult,
       );
       outcome = {
         kind: "render",
@@ -442,6 +537,9 @@ export async function dispatch(
         }
         if (sig.kind === "badRequest") {
           return { kind: "badRequest", signal: sig };
+        }
+        if (sig.kind === "methodNotAllowed") {
+          return { kind: "methodNotAllowed", signal: sig };
         }
         return { kind: "notFound", signal: sig };
       }

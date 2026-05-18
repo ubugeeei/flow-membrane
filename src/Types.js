@@ -62,6 +62,16 @@ export type RequestLike = {
 
 export type SessionLike = { +[string]: mixed };
 
+export type HttpMethod =
+  | "GET"
+  | "HEAD"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | string;
+
 export type MiddlewareContext = {
   request: RequestLike,
   url: URL,
@@ -70,6 +80,7 @@ export type MiddlewareContext = {
   session: SessionLike,
   state: { [string]: mixed },
   +signal: ?AbortSignal,
+  +method: HttpMethod,
 };
 
 export type MiddlewareNext = () => Promise<mixed> | mixed;
@@ -92,6 +103,7 @@ export type GuardContext<Params: AnyParams = AnyParams> = {
   +state: { +[string]: mixed },
   +matched: $ReadOnlyArray<string>,
   +signal: ?AbortSignal,
+  +method: HttpMethod,
 };
 
 export type GuardResult =
@@ -100,7 +112,8 @@ export type GuardResult =
   | RedirectSignal
   | NotFoundSignal
   | ForbiddenSignal
-  | BadRequestSignal;
+  | BadRequestSignal
+  | MethodNotAllowedSignal;
 
 export type GuardFn<Params: AnyParams = AnyParams> = (
   context: GuardContext<Params>,
@@ -135,11 +148,19 @@ export type BadRequestSignal = {
   +cause?: mixed,
 };
 
+export type MethodNotAllowedSignal = {
+  +kind: "methodNotAllowed",
+  +method: HttpMethod,
+  +allowed: $ReadOnlyArray<HttpMethod>,
+  +message?: string,
+};
+
 export type RouteSignal =
   | RedirectSignal
   | NotFoundSignal
   | ForbiddenSignal
-  | BadRequestSignal;
+  | BadRequestSignal
+  | MethodNotAllowedSignal;
 
 export type Revalidate = "never" | string | number;
 
@@ -164,6 +185,14 @@ export type BoundaryConfig = {
   +forbidden?: React.ComponentType<{}>,
 };
 
+export type ActionFn<Params: AnyParams = AnyParams> = (
+  context: RouteContext<Params, {}>,
+) => Promise<mixed> | mixed;
+
+export type ActionsConfig<Params: AnyParams = AnyParams> = {
+  +[method: HttpMethod]: ActionFn<Params>,
+};
+
 export type MembraneConfig<Params: AnyParams = AnyParams, Genes = {}> = {
   +prerender?: PrerenderConfig<Params>,
   +genes?: GenesLoader<Params, Genes>,
@@ -171,6 +200,8 @@ export type MembraneConfig<Params: AnyParams = AnyParams, Genes = {}> = {
   +boundary?: BoundaryConfig,
   +metadata?: ((context: RouteContext<Params, {}>) => mixed) | mixed,
   +revalidate?: Revalidate,
+  +action?: ActionFn<Params>,
+  +actions?: ActionsConfig<Params>,
 };
 
 export type RouteContext<Params: AnyParams = AnyParams, Genes = {}> = {
@@ -184,6 +215,8 @@ export type RouteContext<Params: AnyParams = AnyParams, Genes = {}> = {
   +request: RequestLike,
   +state: { +[string]: mixed },
   +signal: ?AbortSignal,
+  +method: HttpMethod,
+  +actionResult?: mixed,
 };
 
 export type RouteModule<Params: AnyParams = AnyParams, Genes = {}> = {
@@ -206,6 +239,7 @@ export type RouteOptions<Params: AnyParams = AnyParams> = {
   +id?: string,
   +params?: ParamCodecs,
   +query?: QueryCodecs,
+  +methods?: $ReadOnlyArray<HttpMethod>,
   +module: Lazy<RouteModule<Params, mixed>>,
   +guard?: Guard<Params> | GuardFn<Params>,
   +middleware?: $ReadOnlyArray<Middleware | MiddlewareFn>,
@@ -215,6 +249,7 @@ export type GroupOptions<Params: AnyParams = AnyParams> = {
   +id?: string,
   +params?: ParamCodecs,
   +query?: QueryCodecs,
+  +methods?: $ReadOnlyArray<HttpMethod>,
   +layout?: Lazy<LayoutModule>,
   +guard?: Guard<Params> | GuardFn<Params>,
   +middleware?: $ReadOnlyArray<Middleware | MiddlewareFn>,
@@ -231,6 +266,7 @@ export type RouteNode =
       +middleware: $ReadOnlyArray<Middleware>,
       +paramCodecs: ParamCodecs,
       +queryCodecs: QueryCodecs,
+      +methods: ?$ReadOnlyArray<HttpMethod>,
     }
   | {
       +kind: "group",
@@ -241,6 +277,7 @@ export type RouteNode =
       +middleware: $ReadOnlyArray<Middleware>,
       +paramCodecs: ParamCodecs,
       +queryCodecs: QueryCodecs,
+      +methods: ?$ReadOnlyArray<HttpMethod>,
       +routes: $ReadOnlyArray<RouteNode>,
     };
 
@@ -290,7 +327,8 @@ export type DispatchResult =
   | { +kind: "redirect", +signal: RedirectSignal }
   | { +kind: "notFound", +signal: NotFoundSignal }
   | { +kind: "forbidden", +signal: ForbiddenSignal }
-  | { +kind: "badRequest", +signal: BadRequestSignal };
+  | { +kind: "badRequest", +signal: BadRequestSignal }
+  | { +kind: "methodNotAllowed", +signal: MethodNotAllowedSignal };
 
 export type NavigationTarget = string | URL | {
   +to: string,
