@@ -7,9 +7,31 @@ import {
 } from "./Path";
 import type {
   AnyParams,
+  AnyQuery,
   RouteMatch,
   RouteNode,
 } from "./Types";
+
+function signatureFor(
+  routeId: string,
+  pathname: string,
+  query: AnyQuery,
+): string {
+  const keys = Object.keys(query).sort();
+  const parts: Array<string> = [];
+  for (const key of keys) {
+    const value: mixed = query[key];
+    if (Array.isArray(value)) {
+      const ordered = (value as $FlowFixMe as $ReadOnlyArray<mixed>).slice().sort();
+      for (const entry of ordered) {
+        parts.push(`${key}=${String(entry)}`);
+      }
+    } else if (value != null) {
+      parts.push(`${key}=${String(value)}`);
+    }
+  }
+  return `${routeId}|${pathname}|${parts.join("&")}`;
+}
 
 function ensureUrl(input: string | URL): URL {
   if (typeof input === "string") {
@@ -55,6 +77,7 @@ function attemptMatch(
       query: {} as $FlowFixMe,
       ancestors: frame.ancestors,
       matchedPath: (frame.consumedPath === "/" ? "" : frame.consumedPath) + frame.node.path.pattern,
+      signature: "",
     };
   }
 
@@ -95,13 +118,16 @@ export function matchRoute(
     };
     const match = attemptMatch(frame, segments);
     if (match != null) {
+      const pathname = url.pathname;
+      const query = parseQuery(url);
       return {
         route: match.route,
-        pathname: url.pathname,
+        pathname,
         params: match.params,
-        query: parseQuery(url),
+        query,
         ancestors: match.ancestors,
         matchedPath: match.matchedPath === "" ? "/" : match.matchedPath,
+        signature: signatureFor(match.route.id, pathname, query),
       };
     }
   }

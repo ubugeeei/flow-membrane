@@ -309,6 +309,7 @@ export type RouteMatch = {
   +query: AnyQuery,
   +ancestors: $ReadOnlyArray<RouteNode>,
   +matchedPath: string,
+  +signature: string,
 };
 
 export type DispatchOptions = {
