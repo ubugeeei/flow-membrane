@@ -165,3 +165,5 @@ declare export function previewMatch(
   app: any,
   target: any,
 ): any;
+declare export function buildCspHeader(directives: any): string;
+declare export function securityHeaders(options?: any): { +[string]: string };

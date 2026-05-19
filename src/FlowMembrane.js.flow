@@ -48,6 +48,28 @@ export type RequestLike = {
 
 export type SessionLike = { +[string]: mixed };
 
+export type HttpMethod =
+  | "GET"
+  | "HEAD"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | string;
+
+export type BadRequestSignal = {
+  +kind: "badRequest",
+  +message?: string,
+  +cause?: mixed,
+};
+export type MethodNotAllowedSignal = {
+  +kind: "methodNotAllowed",
+  +method: HttpMethod,
+  +allowed: $ReadOnlyArray<HttpMethod>,
+  +message?: string,
+};
+
 export type MiddlewareContext = {
   request: RequestLike,
   url: URL,
@@ -380,6 +402,29 @@ declare export var codecs: {
   +uuid: () => ParamCodec<string>,
   +id: <T>() => ParamCodec<T>,
 };
+
+export type CspDirectives = { +[directive: string]: string | $ReadOnlyArray<string> };
+export type HstsOptions = {
+  +maxAge: number,
+  +includeSubDomains?: boolean,
+  +preload?: boolean,
+};
+export type SecurityHeadersOptions = {
+  +csp?: string | CspDirectives,
+  +cspReportOnly?: string | CspDirectives,
+  +contentTypeOptions?: "nosniff" | "off",
+  +frameOptions?: "DENY" | "SAMEORIGIN" | "off" | string,
+  +referrerPolicy?: "off" | string,
+  +permissionsPolicy?: string,
+  +hsts?: HstsOptions | string | "off",
+  +crossOriginOpenerPolicy?: "off" | "same-origin" | "same-origin-allow-popups" | "unsafe-none" | string,
+  +crossOriginEmbedderPolicy?: "off" | "require-corp" | "unsafe-none" | "credentialless" | string,
+  +crossOriginResourcePolicy?: "off" | "same-origin" | "same-site" | "cross-origin" | string,
+};
+declare export function buildCspHeader(directives: CspDirectives): string;
+declare export function securityHeaders(
+  options?: SecurityHeadersOptions,
+): { +[string]: string };
 
 declare export function createNavigation(options?: { +initial?: URL }): Navigation;
 declare export function hrefFor(
