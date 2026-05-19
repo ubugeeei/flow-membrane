@@ -166,6 +166,29 @@ function findById(nodes: $ReadOnlyArray<RouteNode>, id: string): ?RouteNode {
   return null;
 }
 
+function snapshotNode(node: RouteNode): string {
+  const guards = node.guards.map(g => g.id).join(",");
+  const mws = node.middleware.map(m => m.id).join(",");
+  const methods = node.methods != null ? Array.from(node.methods).sort().join(",") : "";
+  const paramKeys = Object.keys(node.paramCodecs).sort().join(",");
+  const queryKeys = Object.keys(node.queryCodecs).sort().join(",");
+  const header = `${node.kind}|${node.id}|${node.path.pattern}|m=${methods}|g=${guards}|mw=${mws}|p=${paramKeys}|q=${queryKeys}`;
+  if (node.kind === "group") {
+    const children = node.routes.map(snapshotNode).join(";");
+    return `${header}{${children}}`;
+  }
+  return header;
+}
+
+function snapshotRoutes(
+  middleware: $ReadOnlyArray<Middleware>,
+  routes: $ReadOnlyArray<RouteNode>,
+): string {
+  const mw = middleware.map(m => m.id).join(",");
+  const tree = routes.map(snapshotNode).join(";");
+  return `app|mw=${mw}|${tree}`;
+}
+
 function structuralPattern(path: CompiledPath): string {
   const parts: Array<string> = [];
   for (const segment of path.segments) {
@@ -349,6 +372,10 @@ class AppImpl implements App {
 
   routeById(id: string): ?RouteNode {
     return findById(this.routes, id);
+  }
+
+  snapshot(): string {
+    return snapshotRoutes(this.middleware, this.routes);
   }
 }
 

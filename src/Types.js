@@ -335,6 +335,7 @@ export interface App {
   paths(): $ReadOnlyArray<string>;
   routeById(id: string): ?RouteNode;
   clearMatchCache(): void;
+  snapshot(): string;
 }
 
 export type RouteMatch = {
