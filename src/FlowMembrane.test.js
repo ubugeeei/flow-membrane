@@ -43,6 +43,7 @@ const {
   securityHeaders,
   Link,
   NavigationProvider,
+  useRouteError,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -1487,6 +1488,73 @@ test("renderBoundary returns notFound component for notFound result", async () =
   const node = renderBoundary(result, { boundary: { notFound: NotFound } });
   const html = ReactDOMServer.renderToString(node);
   expect(html).toBe("<p>404</p>");
+});
+
+test("renderBoundary forwards the signal to the notFound component", async () => {
+  const NotFound = ({ signal }) =>
+    React.createElement("p", null, signal?.kind ?? "no-signal");
+  const myApp = app({
+    routes: [
+      route("/x", {
+        id: "x",
+        guard: () => { notFound("missing user"); },
+        module: homeModule(),
+      }),
+    ],
+  });
+  const result = await dispatch(myApp, "/x");
+  const node = renderBoundary(result, { boundary: { notFound: NotFound } });
+  const html = ReactDOMServer.renderToString(node);
+  expect(html).toContain("notFound");
+});
+
+test("useRouteError exposes the signal to descendants of the boundary", async () => {
+  const ChildReader = () => {
+    const err = useRouteError();
+    return React.createElement("p", null, err == null ? "none" : err.kind);
+  };
+  const Forbidden = () => React.createElement(ChildReader, {});
+  const myApp = app({
+    routes: [
+      route("/x", { id: "x", guard: () => false, module: homeModule() }),
+    ],
+  });
+  const result = await dispatch(myApp, "/x");
+  const node = renderBoundary(result, { boundary: { forbidden: Forbidden } });
+  const html = ReactDOMServer.renderToString(node);
+  expect(html).toBe("<p>forbidden</p>");
+});
+
+test("renderBoundary handles badRequest and methodNotAllowed boundaries", async () => {
+  const BadReq = ({ signal }) =>
+    React.createElement("p", null, `bad:${signal?.message ?? ""}`);
+  const MNA = ({ signal }) =>
+    React.createElement("p", null, `mna:${signal?.method ?? ""}`);
+
+  const myApp = app({
+    routes: [
+      route("/q", {
+        id: "q",
+        query: { n: codecs.query.int() },
+        module: homeModule(),
+      }),
+      route("/m", {
+        id: "m",
+        methods: ["GET"],
+        module: homeModule(),
+      }),
+    ],
+  });
+
+  const badResult = await dispatch(myApp, "/q?n=foo");
+  const badNode = renderBoundary(badResult, { boundary: { badRequest: BadReq } });
+  const badHtml = ReactDOMServer.renderToString(badNode);
+  expect(badHtml).toContain("bad:");
+
+  const mnaResult = await dispatch(myApp, "/m", { request: { url: "/m", method: "POST" } });
+  const mnaNode = renderBoundary(mnaResult, { boundary: { methodNotAllowed: MNA } });
+  const mnaHtml = ReactDOMServer.renderToString(mnaNode);
+  expect(mnaHtml).toBe("<p>mna:POST</p>");
 });
 
 test("renderBoundary returns forbidden component for forbidden result", async () => {

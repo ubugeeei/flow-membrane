@@ -112,6 +112,7 @@ export {
   useApp,
   useMetadata,
   useNavigation,
+  useRouteError,
   useRouteMatch,
   useUrl,
 } from "./React";

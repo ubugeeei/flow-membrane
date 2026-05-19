@@ -71,4 +71,8 @@ declare export function useRouteMatch(): ?{
   +routeId: string,
   +signature: string,
 };
+declare export function useRouteError(): ?{
+  +kind: "notFound" | "forbidden" | "badRequest" | "methodNotAllowed",
+  +signal: any,
+};
 declare export function useUrl(): URL;

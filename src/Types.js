@@ -184,9 +184,17 @@ export type GenesLoader<Params: AnyParams, Genes> = (
 export type BoundaryConfig = {
   +loading?: React.ComponentType<{}>,
   +error?: React.ComponentType<{ +error: mixed, +reset: () => void }>,
-  +notFound?: React.ComponentType<{}>,
-  +forbidden?: React.ComponentType<{}>,
+  +notFound?: React.ComponentType<{ +signal?: NotFoundSignal }>,
+  +forbidden?: React.ComponentType<{ +signal?: ForbiddenSignal }>,
+  +badRequest?: React.ComponentType<{ +signal?: BadRequestSignal }>,
+  +methodNotAllowed?: React.ComponentType<{ +signal?: MethodNotAllowedSignal }>,
 };
+
+export type RouteError =
+  | { +kind: "notFound", +signal: NotFoundSignal }
+  | { +kind: "forbidden", +signal: ForbiddenSignal }
+  | { +kind: "badRequest", +signal: BadRequestSignal }
+  | { +kind: "methodNotAllowed", +signal: MethodNotAllowedSignal };
 
 export type ActionFn<Params: AnyParams = AnyParams> = (
   context: RouteContext<Params, {}>,
