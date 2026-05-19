@@ -4,6 +4,7 @@ import {
   attachCodecs,
   combinePaths,
   compilePath,
+  joinPath,
 } from "./Path";
 import type {
   AnyParams,
@@ -164,6 +165,91 @@ function findById(nodes: $ReadOnlyArray<RouteNode>, id: string): ?RouteNode {
   return null;
 }
 
+function structuralPattern(path: CompiledPath): string {
+  const parts: Array<string> = [];
+  for (const segment of path.segments) {
+    if (segment.kind === "literal") {
+      parts.push(`L:${segment.value}`);
+    } else if (segment.kind === "param") {
+      parts.push("P");
+    } else if (segment.kind === "catchAll") {
+      parts.push("C");
+    }
+  }
+  return parts.join("/");
+}
+
+type ValidationState = {
+  +ids: Set<string>,
+  +structures: Set<string>,
+  +issues: Array<string>,
+};
+
+function walkValidate(
+  nodes: $ReadOnlyArray<RouteNode>,
+  parentPattern: string,
+  parentStructure: string,
+  state: ValidationState,
+): void {
+  for (const node of nodes) {
+    if (state.ids.has(node.id)) {
+      state.issues.push(`Duplicate route id: "${node.id}"`);
+    } else {
+      state.ids.add(node.id);
+    }
+
+    let sawCatchAll = false;
+    for (const segment of node.path.segments) {
+      if (sawCatchAll) {
+        state.issues.push(
+          `Catch-all segment must be the last segment in pattern "${node.path.pattern}" (route id "${node.id}")`,
+        );
+        break;
+      }
+      if (segment.kind === "catchAll") {
+        sawCatchAll = true;
+      }
+    }
+
+    const combinedPattern = joinPath(parentPattern, node.path.pattern);
+    const localStructure = structuralPattern(node.path);
+    const fullStructure = parentStructure === ""
+      ? localStructure
+      : (localStructure === "" ? parentStructure : `${parentStructure}/${localStructure}`);
+
+    if (node.kind === "route") {
+      if (state.structures.has(fullStructure)) {
+        state.issues.push(
+          `Duplicate route pattern: "${combinedPattern}" (route id "${node.id}")`,
+        );
+      } else {
+        state.structures.add(fullStructure);
+      }
+      continue;
+    }
+
+    if (node.path.segments.some(segment => segment.kind === "catchAll")) {
+      state.issues.push(
+        `Group pattern cannot contain a catch-all segment: "${node.path.pattern}" (group id "${node.id}")`,
+      );
+    }
+
+    walkValidate(node.routes, combinedPattern, fullStructure, state);
+  }
+}
+
+export function validateManifest(routes: $ReadOnlyArray<RouteNode>): void {
+  const state: ValidationState = {
+    ids: new Set(),
+    structures: new Set(),
+    issues: [],
+  };
+  walkValidate(routes, "/", "", state);
+  if (state.issues.length > 0) {
+    throw new Error(`Invalid route manifest:\n  - ${state.issues.join("\n  - ")}`);
+  }
+}
+
 class AppImpl implements App {
   id: string;
   routes: $ReadOnlyArray<RouteNode>;
@@ -172,6 +258,7 @@ class AppImpl implements App {
   notFound: $FlowFixMe;
 
   constructor(options: AppOptions): void {
+    validateManifest(options.routes);
     this.id = generateId("app");
     this.routes = options.routes;
     this.middleware = normalizeMiddleware(options.middleware);

@@ -68,6 +68,7 @@ export {
   guard,
   middleware,
   route,
+  validateManifest,
 } from "./Manifest";
 export { codecs } from "./Path";
 export { lazy, resolved } from "./Lazy";

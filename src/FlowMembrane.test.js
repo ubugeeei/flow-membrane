@@ -38,6 +38,7 @@ const {
   hrefFor,
   previewMatch,
   urlFor,
+  validateManifest,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -415,6 +416,96 @@ test("urlFor works for parameterless routes without options", () => {
     routes: [route("/", { id: "root", module: homeModule() })],
   });
   expect(urlFor(application, "root")).toBe("/");
+});
+
+test("validateManifest rejects duplicate route ids", () => {
+  expect(() =>
+    app({
+      routes: [
+        route("/a", { id: "x", module: homeModule() }),
+        route("/b", { id: "x", module: homeModule() }),
+      ],
+    }),
+  ).toThrow(/Duplicate route id: "x"/);
+});
+
+test("validateManifest rejects duplicate route patterns", () => {
+  expect(() =>
+    app({
+      routes: [
+        route("/products/:id", { id: "a", module: homeModule() }),
+        route("/products/:slug", { id: "b", module: homeModule() }),
+      ],
+    }),
+  ).toThrow(/Duplicate route pattern/);
+});
+
+test("validateManifest rejects catch-all not at the end", () => {
+  expect(() => app({
+    routes: [
+      route("/files/*rest/extra", { id: "files", module: homeModule() }),
+    ],
+  })).toThrow(/Catch-all segment must be the last segment/);
+});
+
+test("validateManifest rejects catch-all on group", () => {
+  expect(() =>
+    app({
+      routes: [
+        group("/files/*rest", {
+          id: "files",
+          routes: [route("/", { id: "files.home", module: homeModule() })],
+        }),
+      ],
+    }),
+  ).toThrow(/Group pattern cannot contain a catch-all segment/);
+});
+
+test("validateManifest detects duplicate id deep inside a group", () => {
+  expect(() =>
+    app({
+      routes: [
+        route("/a", { id: "shared", module: homeModule() }),
+        group("/admin", {
+          id: "admin",
+          routes: [
+            route("/b", { id: "shared", module: homeModule() }),
+          ],
+        }),
+      ],
+    }),
+  ).toThrow(/Duplicate route id: "shared"/);
+});
+
+test("validateManifest accepts the same pattern under different groups", () => {
+  const application = app({
+    routes: [
+      group("/a", {
+        id: "a",
+        routes: [route("/x", { id: "a.x", module: homeModule() })],
+      }),
+      group("/b", {
+        id: "b",
+        routes: [route("/x", { id: "b.x", module: homeModule() })],
+      }),
+    ],
+  });
+  expect(application.routeById("a.x")?.id).toBe("a.x");
+  expect(application.routeById("b.x")?.id).toBe("b.x");
+});
+
+test("validateManifest passes for a normal manifest", () => {
+  validateManifest([
+    route("/", { id: "home", module: homeModule() }),
+    route("/products/:id", { id: "product", module: homeModule() }),
+    group("/admin", {
+      id: "admin",
+      routes: [
+        route("/", { id: "admin.home", module: homeModule() }),
+        route("/users", { id: "admin.users", module: homeModule() }),
+      ],
+    }),
+  ]);
 });
 
 test("previewMatch resolves a target into route info", () => {
