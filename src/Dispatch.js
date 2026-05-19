@@ -10,6 +10,7 @@ import {
   resolveSignal,
 } from "./Abort";
 import { parseCookieHeader } from "./Cookie";
+import { awaitGenes } from "./Genes";
 import { decodeQuery } from "./Path";
 import type {
   AnyParams,
@@ -500,6 +501,19 @@ export async function dispatch(
         if (configGuardSignal == null && typeof moduleConfig.genes === "function") {
           try {
             genes = moduleConfig.genes(tempContext);
+          } catch (thrown) {
+            const sig = signalOf(thrown);
+            if (sig != null) {
+              configGuardSignal = sig;
+            } else {
+              throw thrown;
+            }
+          }
+        }
+        if (configGuardSignal == null && options?.awaitGenes === true && genes != null) {
+          checkAborted(abortSignal);
+          try {
+            genes = await awaitGenes(genes);
           } catch (thrown) {
             const sig = signalOf(thrown);
             if (sig != null) {
