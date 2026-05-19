@@ -41,6 +41,8 @@ const {
   validateManifest,
   buildCspHeader,
   securityHeaders,
+  Link,
+  NavigationProvider,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -608,6 +610,41 @@ test("telemetry hook exceptions do not break dispatch", async () => {
   });
   const result = await dispatch(application, "/");
   expect(result.kind).toBe("render");
+});
+
+test("Link renders an anchor with the resolved href", () => {
+  const node = React.createElement(Link, { to: "/foo" }, "go");
+  const html = ReactDOMServer.renderToString(node);
+  expect(html.includes("href=\"/foo\"")).toBe(true);
+  expect(html.includes(">go</a>")).toBe(true);
+});
+
+test("Link serializes a structured target into href", () => {
+  const node = React.createElement(
+    Link,
+    { to: { to: "/p", query: { q: "x" }, hash: "h" } },
+    "go",
+  );
+  const html = ReactDOMServer.renderToString(node);
+  expect(html.includes("href=\"/p?q=x#h\"")).toBe(true);
+});
+
+test("Link does not call prefetch on the server", () => {
+  let calls = 0;
+  const moduleLoader = lazy(async () => {
+    calls += 1;
+    return { default: () => null };
+  });
+  const application = app({
+    routes: [route("/p/:id", { id: "p", module: moduleLoader })],
+  });
+  const node = React.createElement(
+    NavigationProvider,
+    { app: application },
+    React.createElement(Link, { to: "/p/1", prefetch: "render" }, "go"),
+  );
+  ReactDOMServer.renderToString(node);
+  expect(calls).toBe(0);
 });
 
 test("securityHeaders applies sensible defaults", () => {
