@@ -95,6 +95,7 @@ export {
   parseCookieHeader,
   serializeCookie,
 } from "./Cookie";
+export { buildCspHeader, securityHeaders } from "./Security";
 export { renderMetaTags } from "./Metadata";
 export { renderBoundary, renderResolved } from "./Render";
 export { prerenderPlan, validatePrerenderConfig } from "./Prerender";

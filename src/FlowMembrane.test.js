@@ -39,6 +39,8 @@ const {
   previewMatch,
   urlFor,
   validateManifest,
+  buildCspHeader,
+  securityHeaders,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -606,6 +608,88 @@ test("telemetry hook exceptions do not break dispatch", async () => {
   });
   const result = await dispatch(application, "/");
   expect(result.kind).toBe("render");
+});
+
+test("securityHeaders applies sensible defaults", () => {
+  const headers = securityHeaders();
+  expect(headers["X-Content-Type-Options"]).toBe("nosniff");
+  expect(headers["X-Frame-Options"]).toBe("DENY");
+  expect(headers["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
+  expect(headers["Strict-Transport-Security"]).toBe(undefined);
+  expect(headers["Content-Security-Policy"]).toBe(undefined);
+});
+
+test('securityHeaders honors "off" to remove defaults', () => {
+  const headers = securityHeaders({
+    contentTypeOptions: "off",
+    frameOptions: "off",
+    referrerPolicy: "off",
+  });
+  expect(headers["X-Content-Type-Options"]).toBe(undefined);
+  expect(headers["X-Frame-Options"]).toBe(undefined);
+  expect(headers["Referrer-Policy"]).toBe(undefined);
+});
+
+test("securityHeaders emits HSTS from options", () => {
+  const headers = securityHeaders({
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  });
+  expect(headers["Strict-Transport-Security"]).toBe(
+    "max-age=31536000; includeSubDomains; preload",
+  );
+});
+
+test("securityHeaders accepts a raw HSTS string", () => {
+  const headers = securityHeaders({ hsts: "max-age=600" });
+  expect(headers["Strict-Transport-Security"]).toBe("max-age=600");
+});
+
+test("securityHeaders rejects HSTS maxAge that is not non-negative", () => {
+  expect(() => securityHeaders({ hsts: { maxAge: -1 } })).toThrow(
+    /HSTS maxAge must be a non-negative finite number/,
+  );
+});
+
+test("buildCspHeader serializes a directive map", () => {
+  const csp = buildCspHeader({
+    "default-src": ["'self'"],
+    "img-src": ["'self'", "data:", "https://cdn.example.com"],
+    "upgrade-insecure-requests": [],
+  });
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("img-src 'self' data: https://cdn.example.com");
+  expect(csp).toContain("upgrade-insecure-requests");
+  expect(csp.split("; ").length).toBe(3);
+});
+
+test("securityHeaders accepts either a CSP string or directive map", () => {
+  const fromString = securityHeaders({ csp: "default-src 'self'" });
+  const fromMap = securityHeaders({ csp: { "default-src": ["'self'"] } });
+  expect(fromString["Content-Security-Policy"]).toBe("default-src 'self'");
+  expect(fromMap["Content-Security-Policy"]).toBe("default-src 'self'");
+});
+
+test("securityHeaders separates report-only CSP", () => {
+  const headers = securityHeaders({
+    cspReportOnly: { "default-src": ["'self'"] },
+  });
+  expect(headers["Content-Security-Policy"]).toBe(undefined);
+  expect(headers["Content-Security-Policy-Report-Only"]).toBe(
+    "default-src 'self'",
+  );
+});
+
+test("securityHeaders emits cross-origin isolation triples on request", () => {
+  const headers = securityHeaders({
+    crossOriginOpenerPolicy: "same-origin",
+    crossOriginEmbedderPolicy: "require-corp",
+    crossOriginResourcePolicy: "same-origin",
+    permissionsPolicy: "camera=()",
+  });
+  expect(headers["Cross-Origin-Opener-Policy"]).toBe("same-origin");
+  expect(headers["Cross-Origin-Embedder-Policy"]).toBe("require-corp");
+  expect(headers["Cross-Origin-Resource-Policy"]).toBe("same-origin");
+  expect(headers["Permissions-Policy"]).toBe("camera=()");
 });
 
 test("telemetry reports the final result kind for redirects", async () => {
