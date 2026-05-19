@@ -555,6 +555,60 @@ test("app.match LRU evicts the least-recently-used entry past capacity", () => {
   expect(b2 !== b1).toBe(true);
 });
 
+test("app.snapshot is stable for the same manifest", () => {
+  const build = () => app({
+    routes: [
+      route("/", { id: "home", module: homeModule() }),
+      route("/p/:id", { id: "p", module: homeModule() }),
+    ],
+  });
+  const a = build();
+  const b = build();
+  expect(a.snapshot()).toBe(b.snapshot());
+});
+
+test("app.snapshot changes when a route is added", () => {
+  const a = app({
+    routes: [route("/", { id: "home", module: homeModule() })],
+  });
+  const b = app({
+    routes: [
+      route("/", { id: "home", module: homeModule() }),
+      route("/x", { id: "x", module: homeModule() }),
+    ],
+  });
+  expect(a.snapshot() !== b.snapshot()).toBe(true);
+});
+
+test("app.snapshot changes when a route's pattern or methods change", () => {
+  const a = app({
+    routes: [route("/p/:id", { id: "p", methods: ["GET"], module: homeModule() })],
+  });
+  const b = app({
+    routes: [route("/p/:slug", { id: "p", methods: ["GET"], module: homeModule() })],
+  });
+  const c = app({
+    routes: [route("/p/:id", { id: "p", methods: ["GET", "POST"], module: homeModule() })],
+  });
+  expect(a.snapshot() !== b.snapshot()).toBe(true);
+  expect(a.snapshot() !== c.snapshot()).toBe(true);
+});
+
+test("app.snapshot captures group nesting", () => {
+  const a = app({
+    routes: [
+      group("/admin", {
+        id: "admin",
+        routes: [route("/users", { id: "users", module: homeModule() })],
+      }),
+    ],
+  });
+  const b = app({
+    routes: [route("/admin/users", { id: "users", module: homeModule() })],
+  });
+  expect(a.snapshot() !== b.snapshot()).toBe(true);
+});
+
 test("app.clearMatchCache invalidates cached matches", () => {
   const application = app({
     routes: [route("/p/:id", { id: "p", module: homeModule() })],
