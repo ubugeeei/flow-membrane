@@ -25,6 +25,7 @@ import type {
   NavigationEvent,
   NavigationTarget,
   NavigateOptions,
+  QueryCodecs,
   RouteNode,
   ScrollBehavior,
   ScrollPosition,
@@ -278,36 +279,109 @@ export function hrefFor(
   if (node == null) {
     throw new Error(`Unknown route id: ${routeId}`);
   }
-  const path: CompiledPath = collectPathFor(app, node);
-  return buildHref(path, params, query, hash);
+  const resolved = resolveRouteContext(app, node);
+  const encodedQuery = applyQueryCodecs(resolved.queryCodecs, query);
+  return buildHref(
+    resolved.path,
+    params,
+    encodedQuery != null ? encodedQuery : undefined,
+    hash,
+  );
 }
 
-function collectPathFor(app: App, target: RouteNode): CompiledPath {
-  const found = findPathWithAncestors(app.routes, target, []);
+export function urlFor(
+  app: App,
+  routeId: string,
+  options?: {
+    +params?: AnyParams,
+    +query?: AnyQuery,
+    +hash?: string,
+  },
+): string {
+  return hrefFor(
+    app,
+    routeId,
+    options?.params != null ? options.params : ({} as AnyParams),
+    options?.query,
+    options?.hash,
+  );
+}
+
+type ResolvedRouteContext = {
+  +path: CompiledPath,
+  +queryCodecs: QueryCodecs,
+};
+
+function resolveRouteContext(app: App, target: RouteNode): ResolvedRouteContext {
+  const found = findRouteContext(app.routes, target, [], {} as QueryCodecs);
   if (found == null) {
     throw new Error(`Route node not in app manifest: ${target.id}`);
   }
   return found;
 }
 
-function findPathWithAncestors(
+function findRouteContext(
   nodes: $ReadOnlyArray<RouteNode>,
   target: RouteNode,
   ancestorPaths: $ReadOnlyArray<CompiledPath>,
-): ?CompiledPath {
+  ancestorQueryCodecs: QueryCodecs,
+): ?ResolvedRouteContext {
   for (const node of nodes) {
-    const here = ancestorPaths.concat([node.path]);
+    const pathsHere = ancestorPaths.concat([node.path]);
+    const queryCodecsHere = {
+      ...ancestorQueryCodecs,
+      ...node.queryCodecs,
+    } as $FlowFixMe as QueryCodecs;
     if (node === target || node.id === target.id) {
-      return concatenate(here);
+      return {
+        path: concatenate(pathsHere),
+        queryCodecs: queryCodecsHere,
+      };
     }
     if (node.kind === "group") {
-      const inner = findPathWithAncestors(node.routes, target, here);
+      const inner = findRouteContext(
+        node.routes,
+        target,
+        pathsHere,
+        queryCodecsHere,
+      );
       if (inner != null) {
         return inner;
       }
     }
   }
   return null;
+}
+
+function applyQueryCodecs(
+  codecs: QueryCodecs,
+  query: ?AnyQuery,
+): ?AnyQuery {
+  if (query == null) {
+    return query;
+  }
+  const codecKeys = Object.keys(codecs);
+  if (codecKeys.length === 0) {
+    return query;
+  }
+  const out: { [string]: mixed } = {};
+  for (const key of Object.keys(query)) {
+    out[key] = query[key];
+  }
+  for (const key of codecKeys) {
+    if (!Object.hasOwn(query, key)) {
+      continue;
+    }
+    const codec = codecs[key];
+    const value: mixed = query[key];
+    const serialized = codec.serialize(value as $FlowFixMe);
+    if (serialized == null) {
+      delete out[key];
+    } else {
+      out[key] = serialized;
+    }
+  }
+  return out as $FlowFixMe as AnyQuery;
 }
 
 function concatenate(paths: $ReadOnlyArray<CompiledPath>): CompiledPath {

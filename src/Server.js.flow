@@ -151,6 +151,15 @@ declare export function hrefFor(
   query?: AnyQuery,
   hash?: string,
 ): string;
+declare export function urlFor(
+  app: any,
+  routeId: string,
+  options?: {
+    +params?: AnyParams,
+    +query?: AnyQuery,
+    +hash?: string,
+  },
+): string;
 declare export function previewMatch(
   app: any,
   target: any,
