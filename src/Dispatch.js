@@ -85,6 +85,7 @@ function applyQueryCodecs(match: RouteMatch): RouteMatch | { +badRequest: string
       query: decoded,
       ancestors: match.ancestors,
       matchedPath: match.matchedPath,
+      signature: match.signature,
     };
   } catch (err) {
     return {

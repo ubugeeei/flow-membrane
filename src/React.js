@@ -95,6 +95,7 @@ export function useRouteMatch(): ?{
   +pathname: string,
   +params: { +[string]: mixed },
   +routeId: string,
+  +signature: string,
 } {
   const app = useApp();
   const url = useUrl();
@@ -109,6 +110,7 @@ export function useRouteMatch(): ?{
     pathname: match.pathname,
     params: match.params,
     routeId: match.routeId,
+    signature: match.signature,
   };
 }
 

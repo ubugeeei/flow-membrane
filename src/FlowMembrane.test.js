@@ -312,6 +312,38 @@ test("previewMatch resolves a target into route info", () => {
   const preview = previewMatch(myApp, "/p/9");
   expect(preview?.routeId).toBe("p");
   expect(preview?.params.id).toBe("9");
+  expect(typeof preview?.signature).toBe("string");
+  expect(preview?.signature).toContain("p|/p/9");
+});
+
+test("matchRoute signature is stable for the same url", () => {
+  const routes = [
+    route("/products/:id", { id: "product", module: homeModule() }),
+  ];
+  const a = matchRoute(routes, "/products/42?tag=new&sort=asc");
+  const b = matchRoute(routes, "/products/42?sort=asc&tag=new");
+  expect(a?.signature).toBe(b?.signature);
+});
+
+test("matchRoute signature differs by routeId, pathname, and query", () => {
+  const routes = [
+    route("/a/:id", { id: "a", module: homeModule() }),
+    route("/b/:id", { id: "b", module: homeModule() }),
+  ];
+  const a1 = matchRoute(routes, "/a/1");
+  const a2 = matchRoute(routes, "/a/2");
+  const b1 = matchRoute(routes, "/b/1");
+  const a1q = matchRoute(routes, "/a/1?x=1");
+  expect(a1?.signature).not.toBe(a2?.signature);
+  expect(a1?.signature).not.toBe(b1?.signature);
+  expect(a1?.signature).not.toBe(a1q?.signature);
+});
+
+test("matchRoute signature sorts repeated query values", () => {
+  const routes = [route("/q", { id: "q", module: homeModule() })];
+  const a = matchRoute(routes, "/q?tag=b&tag=a");
+  const b = matchRoute(routes, "/q?tag=a&tag=b");
+  expect(a?.signature).toBe(b?.signature);
 });
 
 test("app.paths enumerates patterns", () => {

@@ -222,6 +222,7 @@ export type RouteMatch = {
   +query: AnyQuery,
   +ancestors: $ReadOnlyArray<RouteNode>,
   +matchedPath: string,
+  +signature: string,
 };
 
 export type DispatchOptions = {
@@ -367,6 +368,7 @@ declare export function previewMatch(
   +params: AnyParams,
   +query: AnyQuery,
   +routeId: string,
+  +signature: string,
 };
 
 declare export function Link(props: LinkProps): React.Node;
@@ -386,5 +388,6 @@ declare export function useRouteMatch(): ?{
   +pathname: string,
   +params: { +[string]: mixed },
   +routeId: string,
+  +signature: string,
 };
 declare export function useUrl(): URL;

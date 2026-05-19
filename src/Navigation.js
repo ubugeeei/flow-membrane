@@ -341,6 +341,7 @@ export function previewMatch(
   +params: AnyParams,
   +query: AnyQuery,
   +routeId: string,
+  +signature: string,
 } {
   const url = resolveTarget(target);
   const match = matchRoute(app.routes, url);
@@ -353,6 +354,7 @@ export function previewMatch(
     params: match.params,
     query: match.query,
     routeId: match.route.id,
+    signature: match.signature,
   };
 }
 

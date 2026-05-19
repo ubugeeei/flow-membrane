@@ -69,5 +69,6 @@ declare export function useRouteMatch(): ?{
   +pathname: string,
   +params: { +[string]: mixed },
   +routeId: string,
+  +signature: string,
 };
 declare export function useUrl(): URL;
