@@ -7,8 +7,11 @@ import type {
   LayoutModule,
   ResolvedRender,
   RouteContext,
+  RouteError,
   AnyParams,
 } from "./Types";
+
+export const RouteErrorContext: React.Context<?RouteError> = React.createContext<?RouteError>(null);
 
 export type RenderOptions = {
   +boundary?: BoundaryConfig,
@@ -53,6 +56,11 @@ export function renderResolved(
   return withSuspense(composed, fallback);
 }
 
+function wrapWithError(node: React.Node, error: RouteError): React.Node {
+  const createElement: any = React.createElement;
+  return createElement(RouteErrorContext.Provider, { value: error }, node);
+}
+
 export function renderBoundary(
   result: DispatchResult,
   options?: RenderOptions,
@@ -62,19 +70,37 @@ export function renderBoundary(
     return renderResolved(result.render, options);
   }
   if (result.kind === "notFound") {
+    const error: RouteError = { kind: "notFound", signal: result.signal };
     const Component = options?.boundary?.notFound;
     if (Component != null) {
-      return createElement(Component, {});
+      return wrapWithError(createElement(Component, { signal: result.signal }), error);
     }
     return null;
   }
   if (result.kind === "forbidden") {
+    const error: RouteError = { kind: "forbidden", signal: result.signal };
     const Component = options?.boundary?.forbidden;
     if (Component != null) {
-      return createElement(Component, {});
+      return wrapWithError(createElement(Component, { signal: result.signal }), error);
     }
     return null;
   }
-  // redirect, badRequest, methodNotAllowed: host handles HTTP-level response
+  if (result.kind === "badRequest") {
+    const error: RouteError = { kind: "badRequest", signal: result.signal };
+    const Component = options?.boundary?.badRequest;
+    if (Component != null) {
+      return wrapWithError(createElement(Component, { signal: result.signal }), error);
+    }
+    return null;
+  }
+  if (result.kind === "methodNotAllowed") {
+    const error: RouteError = { kind: "methodNotAllowed", signal: result.signal };
+    const Component = options?.boundary?.methodNotAllowed;
+    if (Component != null) {
+      return wrapWithError(createElement(Component, { signal: result.signal }), error);
+    }
+    return null;
+  }
+  // redirect: host handles HTTP-level response
   return null;
 }

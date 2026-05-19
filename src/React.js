@@ -9,12 +9,14 @@ import {
   previewMatch,
 } from "./Navigation";
 import { serializeQuery } from "./Path";
+import { RouteErrorContext } from "./Render";
 import type {
   App,
   LinkProps,
   Navigation,
   NavigationTarget,
   NavigateOptions,
+  RouteError,
 } from "./Types";
 
 const NavigationContext: React.Context<?Navigation> = React.createContext(null);
@@ -72,6 +74,10 @@ export function MetadataProvider(props: {
 
 export function useMetadata(): mixed {
   return React.useContext(MetadataContext);
+}
+
+export function useRouteError(): ?RouteError {
+  return React.useContext(RouteErrorContext);
 }
 
 export function useNavigation(): Navigation {
