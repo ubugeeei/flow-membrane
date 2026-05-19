@@ -32,7 +32,26 @@ import type {
   RouteNode,
   RouteSignal,
   SessionLike,
+  TelemetryHooks,
 } from "./Types";
+
+function nowMs(): number {
+  const perf: $FlowFixMe = (globalThis as $FlowFixMe).performance;
+  if (perf != null && typeof perf.now === "function") {
+    return perf.now();
+  }
+  return Date.now();
+}
+
+function safeInvokeHook<T>(hook: ?(event: T) => mixed, event: T): void {
+  if (hook == null) {
+    return;
+  }
+  try {
+    hook(event);
+  } catch (_err) {
+  }
+}
 
 function ensureRequest(url: URL, options?: DispatchOptions): RequestLike {
   if (options?.request != null) {
@@ -324,22 +343,50 @@ export async function dispatch(
     options?.signal,
     request.signal,
   );
-  checkAborted(abortSignal);
+
+  const telemetry: ?TelemetryHooks = appHandle.telemetry ?? null;
+  const startedAt = nowMs();
+  const method: HttpMethod = normalizeMethod(request.method);
+
+  const finalize = (result: DispatchResult): DispatchResult => {
+    safeInvokeHook(telemetry?.onDispatchEnd, {
+      url,
+      method,
+      result,
+      durationMs: nowMs() - startedAt,
+    });
+    return result;
+  };
+
+  safeInvokeHook(telemetry?.onDispatchStart, { url, method });
+
+  try {
+    checkAborted(abortSignal);
+  } catch (thrown) {
+    safeInvokeHook(telemetry?.onDispatchEnd, {
+      url,
+      method,
+      result: { kind: "notFound", signal: { kind: "notFound" } },
+      durationMs: nowMs() - startedAt,
+    });
+    throw thrown;
+  }
 
   const rawMatch = appHandle.match(url);
   if (rawMatch == null) {
-    return { kind: "notFound", signal: { kind: "notFound" } };
+    return finalize({ kind: "notFound", signal: { kind: "notFound" } });
   }
+  safeInvokeHook(telemetry?.onMatch, { url, match: rawMatch });
 
   const decoded = applyQueryCodecs(rawMatch);
   if (decoded != null && typeof (decoded as $FlowFixMe).badRequest === "string") {
-    return {
+    return finalize({
       kind: "badRequest",
       signal: {
         kind: "badRequest",
         message: (decoded as $FlowFixMe).badRequest,
       },
-    };
+    });
   }
   const match: RouteMatch = decoded as $FlowFixMe as RouteMatch;
 
@@ -347,18 +394,17 @@ export async function dispatch(
   const baseState: { [string]: mixed } = options?.state != null
     ? ({ ...(options.state as $FlowFixMe) } as { [string]: mixed })
     : ({} as { [string]: mixed });
-  const method: HttpMethod = normalizeMethod(request.method);
 
   const allowed = collectAllowedMethods(match);
   if (allowed != null && !allowed.includes(method)) {
-    return {
+    return finalize({
       kind: "methodNotAllowed",
       signal: {
         kind: "methodNotAllowed",
         method,
         allowed,
       },
-    };
+    });
   }
 
   const middlewareContext: MiddlewareContext = {
@@ -570,28 +616,34 @@ export async function dispatch(
       const sig = signalOf(thrown);
       if (sig != null) {
         if (sig.kind === "redirect") {
-          return { kind: "redirect", signal: sig };
+          return finalize({ kind: "redirect", signal: sig });
         }
         if (sig.kind === "forbidden") {
-          return { kind: "forbidden", signal: sig };
+          return finalize({ kind: "forbidden", signal: sig });
         }
         if (sig.kind === "badRequest") {
-          return { kind: "badRequest", signal: sig };
+          return finalize({ kind: "badRequest", signal: sig });
         }
         if (sig.kind === "methodNotAllowed") {
-          return { kind: "methodNotAllowed", signal: sig };
+          return finalize({ kind: "methodNotAllowed", signal: sig });
         }
-        return { kind: "notFound", signal: sig };
+        return finalize({ kind: "notFound", signal: sig });
       }
     }
     if (isRedirect(thrown)) {
-      return { kind: "redirect", signal: thrown as $FlowFixMe };
+      return finalize({ kind: "redirect", signal: thrown as $FlowFixMe });
     }
+    safeInvokeHook(telemetry?.onDispatchEnd, {
+      url,
+      method,
+      result: { kind: "notFound", signal: { kind: "notFound" } },
+      durationMs: nowMs() - startedAt,
+    });
     throw thrown;
   }
 
   if (outcome == null) {
-    return { kind: "notFound", signal: { kind: "notFound" } };
+    return finalize({ kind: "notFound", signal: { kind: "notFound" } });
   }
-  return outcome;
+  return finalize(outcome);
 }

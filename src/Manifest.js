@@ -21,6 +21,7 @@ import type {
   RouteMatch,
   RouteNode,
   RouteOptions,
+  TelemetryHooks,
 } from "./Types";
 import { matchRoute } from "./Match";
 
@@ -305,6 +306,7 @@ class AppImpl implements App {
   middleware: $ReadOnlyArray<Middleware>;
   document: $FlowFixMe;
   notFound: $FlowFixMe;
+  telemetry: ?TelemetryHooks;
   _matchCache: MatchCache;
 
   constructor(options: AppOptions): void {
@@ -314,6 +316,7 @@ class AppImpl implements App {
     this.middleware = normalizeMiddleware(options.middleware);
     this.document = options.document ?? null;
     this.notFound = options.notFound ?? null;
+    this.telemetry = options.telemetry ?? null;
     const capacity = options.matchCacheCapacity != null
       ? options.matchCacheCapacity
       : DEFAULT_MATCH_CACHE_CAPACITY;
