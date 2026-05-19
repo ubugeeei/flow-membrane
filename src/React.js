@@ -97,6 +97,21 @@ export function useUrl(): URL {
   return useCell(navigation.current);
 }
 
+export function useNavigationPending(): boolean {
+  const navigation = useNavigation();
+  const pending: $FlowFixMe = navigation.pending;
+  return React.useSyncExternalStore(
+    listener => pending.subscribe(listener),
+    () => pending.get(),
+    () => pending.get(),
+  );
+}
+
+export function useUrlSearchParams(): URLSearchParams {
+  const url = useUrl();
+  return React.useMemo(() => new URLSearchParams(url.search), [url.search]);
+}
+
 export function useRouteMatch(): ?{
   +pathname: string,
   +params: { +[string]: mixed },

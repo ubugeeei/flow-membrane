@@ -505,3 +505,5 @@ declare export function useRouteMatch(): ?{
   +signature: string,
 };
 declare export function useUrl(): URL;
+declare export function useNavigationPending(): boolean;
+declare export function useUrlSearchParams(): URLSearchParams;

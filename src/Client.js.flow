@@ -75,4 +75,6 @@ declare export function useRouteError(): ?{
   +kind: "notFound" | "forbidden" | "badRequest" | "methodNotAllowed",
   +signal: any,
 };
+declare export function useNavigationPending(): boolean;
+declare export function useUrlSearchParams(): URLSearchParams;
 declare export function useUrl(): URL;
