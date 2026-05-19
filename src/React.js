@@ -151,11 +151,27 @@ function shouldDelegateClick(event: SyntheticMouseEvent<HTMLAnchorElement>): boo
   return true;
 }
 
+function prefetchTarget(app: ?App, target: NavigationTarget): void {
+  if (app == null) {
+    return;
+  }
+  const preview = previewMatch(app, target);
+  if (preview == null) {
+    return;
+  }
+  const node = app.routeById(preview.routeId);
+  if (node != null && node.kind === "route") {
+    node.module.preload();
+  }
+}
+
 export function Link(props: LinkProps): React.Node {
   const navigation = useNavigation();
   const app = useApp();
   const href = targetToHref(props.to);
+  const prefetch = props.prefetch ?? "none";
   const createElement: any = React.createElement;
+  const anchorRef = React.useRef<?HTMLAnchorElement>(null);
 
   const handleClick = React.useCallback(
     (event: SyntheticMouseEvent<HTMLAnchorElement>) => {
@@ -177,28 +193,53 @@ export function Link(props: LinkProps): React.Node {
 
   const handlePointerEnter = React.useCallback(
     (_event: SyntheticEvent<HTMLAnchorElement>) => {
-      if (app == null) {
+      if (prefetch !== "intent") {
         return;
       }
-      if (props.prefetch !== "intent" && props.prefetch !== "viewport") {
-        return;
-      }
-      const preview = previewMatch(app, props.to);
-      if (preview == null) {
-        return;
-      }
-      const node = app.routeById(preview.routeId);
-      if (node != null && node.kind === "route") {
-        node.module.preload();
-      }
+      prefetchTarget(app, props.to);
     },
-    [app, props.prefetch, props.to],
+    [app, prefetch, props.to],
   );
+
+  React.useEffect(() => {
+    if (prefetch !== "render") {
+      return undefined;
+    }
+    prefetchTarget(app, props.to);
+    return undefined;
+  }, [app, prefetch, props.to]);
+
+  React.useEffect(() => {
+    if (prefetch !== "viewport") {
+      return undefined;
+    }
+    const el = anchorRef.current;
+    if (el == null) {
+      return undefined;
+    }
+    const ObserverCtor: $FlowFixMe = (globalThis as $FlowFixMe).IntersectionObserver;
+    if (typeof ObserverCtor !== "function") {
+      prefetchTarget(app, props.to);
+      return undefined;
+    }
+    const observer: $FlowFixMe = new ObserverCtor((entries: $ReadOnlyArray<$FlowFixMe>) => {
+      for (const entry of entries) {
+        if (entry != null && entry.isIntersecting === true) {
+          prefetchTarget(app, props.to);
+          observer.disconnect();
+          return;
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [app, prefetch, props.to]);
 
   return createElement(
     "a",
     {
       href,
+      ref: anchorRef,
       className: props.className,
       style: props.style,
       onClick: handleClick,
