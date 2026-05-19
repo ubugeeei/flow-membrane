@@ -313,6 +313,9 @@ declare export function guard<Params: AnyParams = AnyParams>(
   fn: GuardFn<Params>,
   id?: string,
 ): Guard<Params>;
+declare export function validateManifest(
+  routes: $ReadOnlyArray<RouteNode>,
+): void;
 declare export function lazy<T>(loader: () => Promise<T>): Lazy<T>;
 declare export function resolved<T>(value: T): Lazy<T>;
 declare export function membrane<Params: AnyParams = AnyParams, Genes = {}>(
