@@ -88,7 +88,7 @@ export {
   signalOf,
 } from "./Signals";
 export { matchRoute } from "./Match";
-export { dispatch } from "./Dispatch";
+export { dispatch, dispatchEvents, prefetchRoute } from "./Dispatch";
 export { AbortError, isAbortError } from "./Abort";
 export {
   clearCookie,

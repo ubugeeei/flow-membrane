@@ -126,6 +126,15 @@ declare export function dispatch(
   input: string | URL,
   options?: any,
 ): Promise<any>;
+declare export function prefetchRoute(
+  app: any,
+  input: string | URL,
+): Promise<{ +matched: boolean, +routeId: ?string }>;
+declare export function dispatchEvents(
+  app: any,
+  input: string | URL,
+  options?: any,
+): AsyncGenerator<any, void, void>;
 declare export function redirect(
   to: string,
   params?: { +status?: 301 | 302 | 303 | 307 | 308, +headers?: { +[string]: string } },

@@ -44,6 +44,8 @@ const {
   Link,
   NavigationProvider,
   useRouteError,
+  prefetchRoute,
+  dispatchEvents,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -553,6 +555,78 @@ test("app.match LRU evicts the least-recently-used entry past capacity", () => {
   expect(application.match("/p/a")).toBe(a1);
   const b2 = application.match("/p/b");
   expect(b2 !== b1).toBe(true);
+});
+
+test("prefetchRoute preloads route module and ancestor layouts", async () => {
+  let routeLoaded = 0;
+  let layoutLoaded = 0;
+  const routeModule = lazy(async () => {
+    routeLoaded += 1;
+    return { default: () => null };
+  });
+  const layoutModule = lazy(async () => {
+    layoutLoaded += 1;
+    return { default: ({ children }) => children };
+  });
+  const application = app({
+    routes: [
+      group("/admin", {
+        id: "admin",
+        layout: layoutModule,
+        routes: [
+          route("/users/:id", { id: "user", module: routeModule }),
+        ],
+      }),
+    ],
+  });
+  const outcome = await prefetchRoute(application, "/admin/users/9");
+  expect(outcome.matched).toBe(true);
+  expect(outcome.routeId).toBe("user");
+  expect(routeLoaded).toBe(1);
+  expect(layoutLoaded).toBe(1);
+  await prefetchRoute(application, "/admin/users/9");
+  expect(routeLoaded).toBe(1);
+  expect(layoutLoaded).toBe(1);
+});
+
+test("prefetchRoute returns matched=false for unknown urls", async () => {
+  const application = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  const outcome = await prefetchRoute(application, "/missing");
+  expect(outcome.matched).toBe(false);
+  expect(outcome.routeId).toBeNull();
+});
+
+test("dispatchEvents yields matched, moduleLoaded, and ready in order", async () => {
+  const application = app({
+    routes: [route("/p/:id", { id: "p", module: paramModule() })],
+  });
+  const kinds = [];
+  for await (const event of dispatchEvents(application, "/p/9")) {
+    kinds.push(event.kind);
+    if (event.kind === "matched") {
+      expect(event.match.route.id).toBe("p");
+    }
+    if (event.kind === "moduleLoaded") {
+      expect(event.routeId).toBe("p");
+    }
+    if (event.kind === "ready") {
+      expect(event.result.kind).toBe("render");
+    }
+  }
+  expect(kinds).toEqual(["matched", "moduleLoaded", "ready"]);
+});
+
+test("dispatchEvents skips matched/moduleLoaded for no-match urls", async () => {
+  const application = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  const kinds = [];
+  for await (const event of dispatchEvents(application, "/none")) {
+    kinds.push(event.kind);
+  }
+  expect(kinds).toEqual(["ready"]);
 });
 
 test("app.snapshot is stable for the same manifest", () => {

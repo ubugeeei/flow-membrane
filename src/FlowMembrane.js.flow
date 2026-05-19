@@ -150,6 +150,25 @@ export type RouteError =
 
 declare export function useRouteError(): ?RouteError;
 
+export type PrefetchOutcome = {
+  +matched: boolean,
+  +routeId: ?string,
+};
+declare export function prefetchRoute(
+  app: App,
+  input: string | URL,
+): Promise<PrefetchOutcome>;
+
+export type DispatchEvent =
+  | { +kind: "matched", +match: RouteMatch }
+  | { +kind: "moduleLoaded", +routeId: string }
+  | { +kind: "ready", +result: DispatchResult };
+declare export function dispatchEvents(
+  app: App,
+  input: string | URL,
+  options?: DispatchOptions,
+): AsyncGenerator<DispatchEvent, void, void>;
+
 export type GenesLoader<Params: AnyParams, Genes> = (
   context: RouteContext<Params, {}>,
 ) => Genes;

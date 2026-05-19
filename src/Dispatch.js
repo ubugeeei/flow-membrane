@@ -21,6 +21,7 @@ import type {
   Guard,
   HttpMethod,
   LayoutModule,
+  Lazy,
   Middleware,
   MiddlewareContext,
   QueryCodec,
@@ -327,6 +328,67 @@ async function runGuards(
     applied.push(guardEntry.id);
   }
   return { signal: null, blockingGuard: null, appliedGuards: applied };
+}
+
+export type PrefetchOutcome = {
+  +matched: boolean,
+  +routeId: ?string,
+};
+
+export type DispatchEvent =
+  | { +kind: "matched", +match: RouteMatch }
+  | { +kind: "moduleLoaded", +routeId: string }
+  | { +kind: "ready", +result: DispatchResult };
+
+export async function* dispatchEvents(
+  appHandle: App,
+  input: string | URL,
+  options?: DispatchOptions,
+): AsyncGenerator<DispatchEvent, void, void> {
+  const url = typeof input === "string"
+    ? new URL(input, "http://flow-membrane.local")
+    : input;
+  const rawMatch = appHandle.match(url);
+  if (rawMatch != null) {
+    const matchedEvent: DispatchEvent = { kind: "matched", match: rawMatch };
+    yield matchedEvent;
+    if (rawMatch.route.kind === "route") {
+      try {
+        await rawMatch.route.module.preload();
+        const loadedEvent: DispatchEvent = { kind: "moduleLoaded", routeId: rawMatch.route.id };
+        yield loadedEvent;
+      } catch (_err) {
+      }
+    }
+  }
+  const result = await dispatch(appHandle, url, options);
+  const readyEvent: DispatchEvent = { kind: "ready", result };
+  yield readyEvent;
+}
+
+export async function prefetchRoute(
+  appHandle: App,
+  input: string | URL,
+): Promise<PrefetchOutcome> {
+  const url = typeof input === "string"
+    ? new URL(input, "http://flow-membrane.local")
+    : input;
+  const match = appHandle.match(url);
+  if (match == null) {
+    return { matched: false, routeId: null };
+  }
+  const tasks: Array<Promise<mixed>> = [];
+  if (match.route.kind === "route") {
+    tasks.push(match.route.module.preload());
+  }
+  for (const ancestor of match.ancestors) {
+    if (ancestor.kind === "group" && ancestor.layout != null) {
+      const layoutLazy: Lazy<LayoutModule> = ancestor.layout;
+      tasks.push(layoutLazy.preload());
+    }
+  }
+  await Promise.allSettled(tasks);
+  return { matched: true, routeId: match.route.id };
 }
 
 export async function dispatch(
