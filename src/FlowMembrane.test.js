@@ -1640,6 +1640,42 @@ test("renderResolved composes ancestor layouts around the route component", asyn
   expect(html.includes("id=42")).toBe(true);
 });
 
+test("renderResolved still renders happy path when boundary.error is provided", async () => {
+  const Fallback = ({ error }) =>
+    React.createElement("p", null, `caught:${error.message ?? "?"}`);
+  const Page = () => React.createElement("h1", null, "ok");
+  const moduleLoader = lazy(async () => ({ default: Page, __esModule: true }));
+  const myApp = app({
+    routes: [route("/", { id: "page", module: moduleLoader })],
+  });
+  const result = await dispatch(myApp, "/");
+  if (result.kind !== "render") {
+    throw new Error("expected render");
+  }
+  const node = renderResolved(result.render, {
+    boundary: { error: Fallback },
+  });
+  const html = ReactDOMServer.renderToString(node);
+  expect(html).toContain("<h1>ok</h1>");
+  expect(html.includes("caught:")).toBe(false);
+});
+
+test("renderResolved without an error boundary lets the throw escape", async () => {
+  const Crash = () => {
+    throw new Error("boom");
+  };
+  const moduleLoader = lazy(async () => ({ default: Crash, __esModule: true }));
+  const myApp = app({
+    routes: [route("/", { id: "crash", module: moduleLoader })],
+  });
+  const result = await dispatch(myApp, "/");
+  if (result.kind !== "render") {
+    throw new Error("expected render");
+  }
+  const node = renderResolved(result.render);
+  expect(() => ReactDOMServer.renderToString(node)).toThrow("boom");
+});
+
 test("renderBoundary returns notFound component for notFound result", async () => {
   const NotFound = () => React.createElement("p", null, "404");
   const myApp = app({

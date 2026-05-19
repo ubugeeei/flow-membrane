@@ -13,6 +13,35 @@ import type {
 
 export const RouteErrorContext: React.Context<?RouteError> = React.createContext<?RouteError>(null);
 
+type ErrorBoundaryProps = {
+  +fallback: React.ComponentType<{ +error: mixed, +reset: () => void }>,
+  +children: React.Node,
+};
+type ErrorBoundaryState = { error: mixed };
+
+class RouteErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: mixed): ErrorBoundaryState {
+    return { error };
+  }
+  componentDidCatch(_error: mixed, _info: { +componentStack: string, ... }): void {
+  }
+  reset = (): void => {
+    this.setState({ error: null });
+  };
+  render(): React.Node {
+    if (this.state.error != null) {
+      const Fallback = this.props.fallback;
+      const createElement: any = React.createElement;
+      return createElement(Fallback, { error: this.state.error, reset: this.reset });
+    }
+    return this.props.children;
+  }
+}
+
 export type RenderOptions = {
   +boundary?: BoundaryConfig,
   +fallback?: React.Node,
@@ -53,7 +82,16 @@ export function renderResolved(
       ? createElement(options.boundary.loading, {})
       : null
   );
-  return withSuspense(composed, fallback);
+  const suspended = withSuspense(composed, fallback);
+  const ErrorFallback = options?.boundary?.error;
+  if (ErrorFallback == null) {
+    return suspended;
+  }
+  return createElement(
+    RouteErrorBoundary,
+    { fallback: ErrorFallback },
+    suspended,
+  );
 }
 
 function wrapWithError(node: React.Node, error: RouteError): React.Node {
