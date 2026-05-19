@@ -508,6 +508,58 @@ test("validateManifest passes for a normal manifest", () => {
   ]);
 });
 
+test("app.match returns the same RouteMatch instance for the same url (cache hit)", () => {
+  const application = app({
+    routes: [route("/p/:id", { id: "p", module: homeModule() })],
+  });
+  const a = application.match("/p/1");
+  const b = application.match("/p/1");
+  expect(a).toBe(b);
+});
+
+test("app.match returns distinct matches for distinct urls", () => {
+  const application = app({
+    routes: [route("/p/:id", { id: "p", module: homeModule() })],
+  });
+  const a = application.match("/p/1");
+  const b = application.match("/p/2");
+  expect(a !== b).toBe(true);
+  expect(a?.params.id).toBe("1");
+  expect(b?.params.id).toBe("2");
+});
+
+test("app.match caches null results for unknown urls", () => {
+  const application = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  expect(application.match("/missing")).toBeNull();
+  expect(application.match("/missing")).toBeNull();
+});
+
+test("app.match LRU evicts the least-recently-used entry past capacity", () => {
+  const application = app({
+    matchCacheCapacity: 2,
+    routes: [route("/p/:id", { id: "p", module: homeModule() })],
+  });
+  const a1 = application.match("/p/a");
+  const b1 = application.match("/p/b");
+  expect(application.match("/p/a")).toBe(a1);
+  application.match("/p/c");
+  expect(application.match("/p/a")).toBe(a1);
+  const b2 = application.match("/p/b");
+  expect(b2 !== b1).toBe(true);
+});
+
+test("app.clearMatchCache invalidates cached matches", () => {
+  const application = app({
+    routes: [route("/p/:id", { id: "p", module: homeModule() })],
+  });
+  const a = application.match("/p/1");
+  application.clearMatchCache();
+  const b = application.match("/p/1");
+  expect(a !== b).toBe(true);
+});
+
 test("previewMatch resolves a target into route info", () => {
   const myApp = app({
     routes: [

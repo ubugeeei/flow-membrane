@@ -250,12 +250,62 @@ export function validateManifest(routes: $ReadOnlyArray<RouteNode>): void {
   }
 }
 
+const DEFAULT_MATCH_CACHE_CAPACITY = 256;
+
+type MatchCacheEntry = { +match: ?RouteMatch };
+
+class MatchCache {
+  +map: Map<string, MatchCacheEntry>;
+  +capacity: number;
+
+  constructor(capacity: number): void {
+    this.map = new Map();
+    this.capacity = capacity;
+  }
+
+  get(key: string): ?MatchCacheEntry {
+    const entry = this.map.get(key);
+    if (entry == null) {
+      return null;
+    }
+    this.map.delete(key);
+    this.map.set(key, entry);
+    return entry;
+  }
+
+  set(key: string, match: ?RouteMatch): void {
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    }
+    this.map.set(key, { match });
+    if (this.map.size > this.capacity) {
+      const oldest = this.map.keys().next().value;
+      if (oldest != null) {
+        this.map.delete(oldest);
+      }
+    }
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  get size(): number {
+    return this.map.size;
+  }
+}
+
+function matchCacheKey(input: string | URL): string {
+  return typeof input === "string" ? input : input.toString();
+}
+
 class AppImpl implements App {
   id: string;
   routes: $ReadOnlyArray<RouteNode>;
   middleware: $ReadOnlyArray<Middleware>;
   document: $FlowFixMe;
   notFound: $FlowFixMe;
+  _matchCache: MatchCache;
 
   constructor(options: AppOptions): void {
     validateManifest(options.routes);
@@ -264,10 +314,25 @@ class AppImpl implements App {
     this.middleware = normalizeMiddleware(options.middleware);
     this.document = options.document ?? null;
     this.notFound = options.notFound ?? null;
+    const capacity = options.matchCacheCapacity != null
+      ? options.matchCacheCapacity
+      : DEFAULT_MATCH_CACHE_CAPACITY;
+    this._matchCache = new MatchCache(capacity);
   }
 
   match(url: string | URL): ?RouteMatch {
-    return matchRoute(this.routes, url);
+    const key = matchCacheKey(url);
+    const cached = this._matchCache.get(key);
+    if (cached != null) {
+      return cached.match;
+    }
+    const result = matchRoute(this.routes, url);
+    this._matchCache.set(key, result);
+    return result;
+  }
+
+  clearMatchCache(): void {
+    this._matchCache.clear();
   }
 
   paths(): $ReadOnlyArray<string> {
