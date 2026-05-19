@@ -889,6 +889,39 @@ test("previewMatch resolves a target into route info", () => {
   expect(preview?.signature).toContain("p|/p/9");
 });
 
+test("matchRoute prefers a literal route over a parameter route", () => {
+  const routes = [
+    route("/users/:id", { id: "user", module: homeModule() }),
+    route("/users/me", { id: "user.me", module: homeModule() }),
+  ];
+  expect(matchRoute(routes, "/users/me")?.route.id).toBe("user.me");
+  expect(matchRoute(routes, "/users/42")?.route.id).toBe("user");
+});
+
+test("matchRoute prefers a parameter route over a catch-all route", () => {
+  const routes = [
+    route("/files/*rest", { id: "files.rest", module: homeModule() }),
+    route("/files/:name", { id: "files.one", module: homeModule() }),
+  ];
+  expect(matchRoute(routes, "/files/readme.md")?.route.id).toBe("files.one");
+  expect(matchRoute(routes, "/files/a/b/c")?.route.id).toBe("files.rest");
+});
+
+test("matchRoute specificity ranks groups too", () => {
+  const routes = [
+    group("/:org", {
+      id: "org",
+      routes: [route("/", { id: "org.home", module: homeModule() })],
+    }),
+    group("/about", {
+      id: "about",
+      routes: [route("/", { id: "about.home", module: homeModule() })],
+    }),
+  ];
+  expect(matchRoute(routes, "/about")?.route.id).toBe("about.home");
+  expect(matchRoute(routes, "/acme")?.route.id).toBe("org.home");
+});
+
 test("matchRoute signature is stable for the same url", () => {
   const routes = [
     route("/products/:id", { id: "product", module: homeModule() }),
