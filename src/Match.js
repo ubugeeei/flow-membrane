@@ -8,9 +8,38 @@ import {
 import type {
   AnyParams,
   AnyQuery,
+  CompiledPath,
   RouteMatch,
   RouteNode,
 } from "./Types";
+
+function specificityFor(path: CompiledPath): number {
+  let score = 0;
+  for (const segment of path.segments) {
+    if (segment.kind === "literal") {
+      score += 100;
+    } else if (segment.kind === "param") {
+      score += 10;
+    } else {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function sortBySpecificity(
+  nodes: $ReadOnlyArray<RouteNode>,
+): $ReadOnlyArray<RouteNode> {
+  const indexed = nodes.map((node, index) => ({ node, index }));
+  indexed.sort((a, b) => {
+    const diff = specificityFor(b.node.path) - specificityFor(a.node.path);
+    if (diff !== 0) {
+      return diff;
+    }
+    return a.index - b.index;
+  });
+  return indexed.map(entry => entry.node);
+}
 
 function signatureFor(
   routeId: string,
@@ -86,7 +115,7 @@ function attemptMatch(
   }
   const groupNode = frame.node;
   const newAncestors = frame.ancestors.concat([groupNode]);
-  for (const child of groupNode.routes) {
+  for (const child of sortBySpecificity(groupNode.routes)) {
     const childFrame: Frame = {
       node: child,
       ancestors: newAncestors,
@@ -109,7 +138,7 @@ export function matchRoute(
   const url = ensureUrl(input);
   const segments = urlSegments(url);
 
-  for (const root of routes) {
+  for (const root of sortBySpecificity(routes)) {
     const frame: Frame = {
       node: root,
       ancestors: [],
