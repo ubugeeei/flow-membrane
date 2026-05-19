@@ -197,12 +197,36 @@ export type RouteNode =
       +routes: $ReadOnlyArray<RouteNode>,
     };
 
+export type TelemetryEventStart = {
+  +url: URL,
+  +method: HttpMethod,
+};
+
+export type TelemetryEventMatch = {
+  +url: URL,
+  +match: RouteMatch,
+};
+
+export type TelemetryEventEnd = {
+  +url: URL,
+  +method: HttpMethod,
+  +result: DispatchResult,
+  +durationMs: number,
+};
+
+export type TelemetryHooks = {
+  +onDispatchStart?: (event: TelemetryEventStart) => mixed,
+  +onMatch?: (event: TelemetryEventMatch) => mixed,
+  +onDispatchEnd?: (event: TelemetryEventEnd) => mixed,
+};
+
 export type AppOptions = {
   +document?: Lazy<DocumentModule>,
   +middleware?: $ReadOnlyArray<Middleware | MiddlewareFn>,
   +routes: $ReadOnlyArray<RouteNode>,
   +notFound?: Lazy<RouteModule<AnyParams, mixed>>,
   +matchCacheCapacity?: number,
+  +telemetry?: TelemetryHooks,
 };
 
 export interface App {
@@ -211,6 +235,7 @@ export interface App {
   +middleware: $ReadOnlyArray<Middleware>;
   +document?: Lazy<DocumentModule>;
   +notFound?: Lazy<RouteModule<AnyParams, mixed>>;
+  +telemetry?: ?TelemetryHooks;
   match(url: string | URL): ?RouteMatch;
   paths(): $ReadOnlyArray<string>;
   routeById(id: string): ?RouteNode;

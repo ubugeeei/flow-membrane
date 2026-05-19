@@ -560,6 +560,72 @@ test("app.clearMatchCache invalidates cached matches", () => {
   expect(a !== b).toBe(true);
 });
 
+test("telemetry hooks fire for a successful dispatch", async () => {
+  const events = [];
+  const application = app({
+    telemetry: {
+      onDispatchStart: e => events.push({ kind: "start", method: e.method, href: e.url.pathname }),
+      onMatch: e => events.push({ kind: "match", routeId: e.match.route.id }),
+      onDispatchEnd: e => events.push({ kind: "end", result: e.result.kind, durationOk: typeof e.durationMs === "number" }),
+    },
+    routes: [route("/p/:id", { id: "p", module: paramModule() })],
+  });
+  const result = await dispatch(application, "/p/42");
+  expect(result.kind).toBe("render");
+  expect(events.length).toBe(3);
+  expect(events[0].kind).toBe("start");
+  expect(events[0].method).toBe("GET");
+  expect(events[1].kind).toBe("match");
+  expect(events[1].routeId).toBe("p");
+  expect(events[2].kind).toBe("end");
+  expect(events[2].result).toBe("render");
+  expect(events[2].durationOk).toBe(true);
+});
+
+test("telemetry onDispatchEnd fires for notFound (no match)", async () => {
+  const events = [];
+  const application = app({
+    telemetry: {
+      onMatch: () => events.push("match"),
+      onDispatchEnd: e => events.push(`end:${e.result.kind}`),
+    },
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  await dispatch(application, "/nope");
+  expect(events).toEqual(["end:notFound"]);
+});
+
+test("telemetry hook exceptions do not break dispatch", async () => {
+  const application = app({
+    telemetry: {
+      onDispatchStart: () => { throw new Error("boom"); },
+      onMatch: () => { throw new Error("boom"); },
+      onDispatchEnd: () => { throw new Error("boom"); },
+    },
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  const result = await dispatch(application, "/");
+  expect(result.kind).toBe("render");
+});
+
+test("telemetry reports the final result kind for redirects", async () => {
+  const observed = [];
+  const application = app({
+    telemetry: {
+      onDispatchEnd: e => observed.push(e.result.kind),
+    },
+    routes: [
+      route("/old", {
+        id: "old",
+        guard: () => { redirect("/new", { status: 308 }); },
+        module: homeModule(),
+      }),
+    ],
+  });
+  await dispatch(application, "/old");
+  expect(observed).toEqual(["redirect"]);
+});
+
 test("previewMatch resolves a target into route info", () => {
   const myApp = app({
     routes: [
