@@ -37,6 +37,7 @@ const {
   createNavigation,
   hrefFor,
   previewMatch,
+  urlFor,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -295,12 +296,125 @@ test("navigation registers and runs beforeLeave guard", async () => {
 });
 
 test("hrefFor builds path from route id and params", () => {
-  const myApp = app({
+  const application = app({
     routes: [
       route("/products/:id", { id: "product.show", module: homeModule() }),
     ],
   });
-  expect(hrefFor(myApp, "product.show", { id: "42" })).toBe("/products/42");
+  expect(hrefFor(application, "product.show", { id: "42" })).toBe("/products/42");
+});
+
+test("hrefFor builds query string and hash", () => {
+  const application = app({
+    routes: [
+      route("/products/:id", { id: "product.show", module: homeModule() }),
+    ],
+  });
+  const href = hrefFor(
+    application,
+    "product.show",
+    { id: "42" },
+    { tag: "new", n: 3 },
+    "details",
+  );
+  expect(href).toContain("/products/42?");
+  expect(href).toContain("tag=new");
+  expect(href).toContain("n=3");
+  expect(href).toContain("#details");
+});
+
+test("hrefFor encodes path params", () => {
+  const application = app({
+    routes: [
+      route("/u/:name", { id: "user", module: homeModule() }),
+    ],
+  });
+  expect(hrefFor(application, "user", { name: "a/b c" })).toBe("/u/a%2Fb%20c");
+});
+
+test("hrefFor expands catch-all params", () => {
+  const application = app({
+    routes: [
+      route("/files/*rest", { id: "files", module: homeModule() }),
+    ],
+  });
+  expect(hrefFor(application, "files", { rest: ["a", "b", "c"] })).toBe(
+    "/files/a/b/c",
+  );
+});
+
+test("hrefFor throws on unknown route id", () => {
+  const application = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  expect(() => hrefFor(application, "missing", {})).toThrow(
+    "Unknown route id: missing",
+  );
+});
+
+test("hrefFor throws on missing required path param", () => {
+  const application = app({
+    routes: [
+      route("/products/:id", { id: "product", module: homeModule() }),
+    ],
+  });
+  expect(() => hrefFor(application, "product", {})).toThrow(
+    /Missing param "id"/,
+  );
+});
+
+test("hrefFor applies query codecs from the route", () => {
+  const application = app({
+    routes: [
+      route("/q", {
+        id: "q",
+        query: { active: codecs.query.bool() },
+        module: homeModule(),
+      }),
+    ],
+  });
+  expect(hrefFor(application, "q", {}, { active: true })).toBe("/q?active=1");
+  expect(hrefFor(application, "q", {}, { active: false })).toBe("/q?active=0");
+});
+
+test("hrefFor inherits query codecs from group ancestors", () => {
+  const application = app({
+    routes: [
+      group("/admin", {
+        id: "admin",
+        query: { tab: codecs.query.enum(["users", "billing"]) },
+        routes: [
+          route("/", { id: "admin.home", module: homeModule() }),
+        ],
+      }),
+    ],
+  });
+  expect(hrefFor(application, "admin.home", {}, { tab: "users" })).toBe(
+    "/admin?tab=users",
+  );
+});
+
+test("urlFor wraps hrefFor with named options", () => {
+  const application = app({
+    routes: [
+      route("/products/:id", { id: "product", module: homeModule() }),
+    ],
+  });
+  expect(urlFor(application, "product", { params: { id: "9" } })).toBe("/products/9");
+  expect(
+    urlFor(application, "product", {
+      params: { id: "9" },
+      query: { ref: "feed" },
+      hash: "top",
+    }),
+  ).toBe("/products/9?ref=feed#top");
+});
+
+test("urlFor works for parameterless routes without options", () => {
+  const application = app({
+    routes: [route("/", { id: "root", module: homeModule() })],
+  });
+  expect(urlFor(application, "root")).toBe("/");
 });
 
 test("previewMatch resolves a target into route info", () => {
