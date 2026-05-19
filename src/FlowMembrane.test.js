@@ -46,6 +46,8 @@ const {
   useRouteError,
   prefetchRoute,
   dispatchEvents,
+  useNavigationPending,
+  useUrlSearchParams,
 } = require("./FlowMembrane");
 
 function homeModule() {
@@ -739,6 +741,42 @@ test("telemetry hook exceptions do not break dispatch", async () => {
   });
   const result = await dispatch(application, "/");
   expect(result.kind).toBe("render");
+});
+
+test("useNavigationPending reads navigation.pending as a boolean", () => {
+  let observed = null;
+  const Probe = () => {
+    observed = useNavigationPending();
+    return null;
+  };
+  const navigation = createNavigation({ initial: new URL("/", "http://test.local") });
+  const node = React.createElement(
+    NavigationProvider,
+    { navigation },
+    React.createElement(Probe, {}),
+  );
+  ReactDOMServer.renderToString(node);
+  expect(observed).toBe(false);
+});
+
+test("useUrlSearchParams exposes URLSearchParams from the current url", () => {
+  let observed = null;
+  const Probe = () => {
+    observed = useUrlSearchParams();
+    return null;
+  };
+  const navigation = createNavigation({
+    initial: new URL("/p/9?tag=new&n=3", "http://test.local"),
+  });
+  const node = React.createElement(
+    NavigationProvider,
+    { navigation },
+    React.createElement(Probe, {}),
+  );
+  ReactDOMServer.renderToString(node);
+  expect(observed instanceof URLSearchParams).toBe(true);
+  expect(observed.get("tag")).toBe("new");
+  expect(observed.get("n")).toBe("3");
 });
 
 test("Link renders an anchor with the resolved href", () => {

@@ -20,7 +20,9 @@ export {
   useApp,
   useMetadata,
   useNavigation,
+  useNavigationPending,
   useRouteError,
   useRouteMatch,
   useUrl,
+  useUrlSearchParams,
 } from "./React";
