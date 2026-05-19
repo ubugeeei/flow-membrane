@@ -289,6 +289,7 @@ export type AppOptions = {
   +middleware?: $ReadOnlyArray<Middleware | MiddlewareFn>,
   +routes: $ReadOnlyArray<RouteNode>,
   +notFound?: Lazy<RouteModule<AnyParams, mixed>>,
+  +matchCacheCapacity?: number,
 };
 
 export interface App {
@@ -300,6 +301,7 @@ export interface App {
   match(url: string | URL): ?RouteMatch;
   paths(): $ReadOnlyArray<string>;
   routeById(id: string): ?RouteNode;
+  clearMatchCache(): void;
 }
 
 export type RouteMatch = {
